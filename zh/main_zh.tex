@@ -1,0 +1,39 @@
+\documentclass[sigconf,nonacm]{acmart}
+
+\settopmatter{printacmref=false,printfolios=true}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{hyperref}
+
+\setCJKmainfont[AutoFakeBold=2.0,AutoFakeSlant=0.2]{AR PL KaitiM Big5}
+\setCJKsansfont{Noto Sans CJK TC}
+\setCJKmonofont{AR PL UMing TW}
+\setmainfont{TeX Gyre Termes}
+\setsansfont{TeX Gyre Heros}
+\setmonofont{Latin Modern Mono}
+
+\begin{document}
+
+\input{author_info_zh}
+\input{sections/01_題目與摘要}
+
+\maketitle
+
+\input{sections/02_前言}
+\input{sections/03_相關研究}
+\input{sections/04_任務與資料}
+\input{sections/05_方法}
+\input{sections/06_實驗設定}
+\input{sections/07_結果與分析}
+\input{sections/08_限制與未來研究}
+\input{sections/09_結論}
+\input{sections/10_參考文獻}
+
+\end{document}

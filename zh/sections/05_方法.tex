@@ -1,0 +1,70 @@
+\section{方法}
+
+本研究的方法設計並非從零開始，而是沿著「先重現，再推翻，再修正」的流程逐步成形。本節依最終採用的模組化架構說明：基線模型、長文本 encoder、對比式 supervised fine-tuning、動態負樣本選取、法律領域繼續預訓練、scope filtering、learning-to-rank，以及後段 post-processing。為了簡潔起見，本文將美國判決書上的法律領域繼續預訓練稱為 DAP（domain-adaptive pretraining），將 COLIEE Task~1 上的對比式有監督微調稱為 SFT（supervised fine-tuning）。
+
+\subsection{BM25 與 SAILER 基線}
+
+我們首先保留 BM25 與 SAILER 作為主要比較基線。BM25 代表 lexical retrieval 的強基線，用來檢驗 dense retrieval 是否真的帶來額外收益；SAILER 則對應 THUIR@COLIEE 2023 所使用的 legal encoder 架構 \cite{li2023thuir}。在本研究中，SAILER 不再重新 fine-tune，而是直接使用既有模型做嵌入、相似度計算與 top-5 排名輸出。這個設定對 SAILER 是相對有利的，因為其 fine-tuning 資料與本研究切分並不完全一致。
+
+本文的 lexical features 主要來自 BM25 與 query likelihood model (QLD)。對 query $q$ 與文件 $d$，BM25 分數寫為
+\begin{equation}
+\mathrm{BM25}(q,d)=\sum_{t \in q}\mathrm{IDF}(t)\cdot
+\frac{f(t,d)(k_1+1)}{f(t,d)+k_1\left(1-b+b\frac{|d|}{\mathrm{avgdl}}\right)},
+\end{equation}
+其中 $f(t,d)$ 為詞項 $t$ 在文件中的出現次數，$|d|$ 為文件長度，$\mathrm{avgdl}$ 為語料平均文件長度。QLD 則採用 Dirichlet smoothing：
+\begin{equation}
+\mathrm{QLD}(q,d)=\sum_{t \in q} c(t,q)\log \frac{c(t,d)+\mu p(t \mid C)}{|d|+\mu},
+\end{equation}
+其中 $c(t,q)$ 與 $c(t,d)$ 分別表示詞項在 query 與文件中的出現次數，$p(t \mid C)$ 為集合語言模型機率。
+
+\subsection{ModernBERT 長文本編碼}
+
+為檢驗長文本截斷是否為主要瓶頸，我們選用 \texttt{answerdotai/ModernBERT-base} 作為基礎 encoder \cite{warner2024modernbert}。ModernBERT 原生支援 8192 tokens，理論上比 SAILER 更適合處理長篇判決書。然而，若在對比式訓練時同時輸入一個 query、一個 positive 與十五個 negatives，等同於單一步驟需要編碼 17 篇長文；在單張 RTX 4080 SUPER 16GB 上，8192 tokens 會造成記憶體不足。因此，本研究正式實驗採用 4096 tokens，並將 8192 tokens 視為未來在更高硬體資源下的延伸方向。
+
+對於每篇判決書，我們使用 encoder 的句向量表示作為 dense retrieval 嵌入，並以 dot product 與 cosine similarity 兩種方式分別輸出排名結果。最終比較時若兩者相近，則以較佳者作為主要報告，但表格中仍同時列出兩種相似度以避免資訊遺失。
+
+\subsection{對比式 SFT 與靜態 Hard Negatives}
+
+我們將法律判決檢索建模為 query--positive--negative 的對比式學習問題。對於每個 query，使用標註中相關的判決書作為 positive，其餘候選作為潛在 negatives。訓練時的基本配比為 \texttt{1:1:15}，也就是每個 query 搭配一個正樣本與十五個負樣本。設第 $i$ 個樣本的 query 為 $q_i$、正樣本為 $p_i$、負樣本集合為 $\mathcal{N}_i$、相似度函數為 $s(\cdot,\cdot)$、溫度為 $\tau$，則其對比式 SFT 損失寫為
+\begin{equation}
+\mathcal{L}_i=
+-\log
+\frac{\exp\left(s(q_i,p_i)/\tau\right)}
+{\exp\left(s(q_i,p_i)/\tau\right)+\sum_{n \in \mathcal{N}_i}\exp\left(s(q_i,n)/\tau\right)}.
+\end{equation}
+本文的 $s(\cdot,\cdot)$ 實作為 dot product 或 cosine similarity。
+
+在早期實驗中，我們依照類似 THUIR@COLIEE 2023 論文的作法，先用 BM25 top-100 建立 hard-negative pool，再在每個訓練步驟中隨機抽取 15 篇作為負樣本。嚴格來說，THUIR 論文並未明確說明其實作是否採用 random-15；但在本研究的多 epoch 設定下，反覆重抽的實際效果已相當接近讓模型逐步看過整個 top-100 lexical neighborhood。這個設計的優點是實作簡單，缺點則是負樣本難度固定，且完全由 BM25 的 lexical ranking 定義。
+
+\subsection{動態負樣本選取策略}
+
+本研究最重要的方法改動，是將靜態 hard negatives 改為動態負樣本選取。具體而言，在每個 epoch 開始時，先用當前模型計算所有 query 與 candidate 間的相似度分數，再依據該分數決定負樣本被抽中的機率；分數愈高，代表模型愈容易與其混淆，該文件就愈可能被視為 hard negative。若第 $e$ 個 epoch 中 query $q_i$ 的候選負樣本池為 $\mathcal{C}_i$，則抽樣機率可寫為
+\begin{equation}
+\pi_e(n \mid q_i)=
+\frac{\exp\left(\alpha s_e(q_i,n)\right)}
+{\sum_{m \in \mathcal{C}_i}\exp\left(\alpha s_e(q_i,m)\right)},
+\quad n \in \mathcal{C}_i,
+\end{equation}
+其中 $s_e$ 為當前 epoch 的相似度分數，$\alpha$ 控制分佈尖銳度。這使負樣本難度會隨模型能力同步調整，而不是永遠停留在 BM25 所定義的 lexical 相似層次。
+
+此策略的核心動機是：在法律判決檢索中，真正困難的負樣本未必是 BM25 排名高的文件，也可能是語義或程序結構相似、但 lexical overlap 並不特別高的文件。讓模型自己挑選當前最難區分的負樣本，能提供更穩定且更具任務針對性的學習訊號。
+
+\subsection{法律領域繼續預訓練}
+
+除了 task-specific SFT 之外，我們也將 ModernBERT 先在美國判決書語料上進行 DAP，再接續執行對比式 SFT。具體而言，DAP 使用 \texttt{common-pile/caselaw\_access\_project\_filtered}，並以 masked language modeling 目標訓練 backbone encoder。這一步的目的是讓 encoder 先適應法律文本中的長句、引文格式、程序語言與常見法學表述，以減少一般英文預訓練語料與法律文本之間的分布落差。受限於目前 GPU 條件，這個 continued pretraining 約訓練 60 小時，仍只覆蓋不到半個 epoch，因此本文將它視為「仍未訓練飽和」的法律領域適應步驟。
+
+\subsection{年份範圍約束與 scope filtering}
+
+本研究在資料建構與最終推論兩個階段都使用 year-based scope filtering。法律判決書在 ``noticed'' 或引用既有案件時，只會引用過去已存在的判例，而不會引用未來才出現的判決。因此，對於每個 query，我們先抽取其判決年份，再只允許年份早於 query 的文件進入正樣本、負樣本與最終候選集合。
+
+在訓練時，scope filtering 的核心意思是：每個 query--positive--negative docs pair 應只保留法律上合理的舊案候選，而不是任意把未來文件當作候選；在推論時，則先離線建立 query-specific 的 \texttt{query\_candidate\_scope} 索引，再於相似度計算與後段 reranking 時重用，避免每次都重新做年份解析與候選過濾。就本研究目前共用的 scope index 而言，候選篩選實作採用「不晚於 query 年份」為核心，並額外保留一年 slack 以處理年份抽取與案件日期標記的噪音。這個設計同時提升訓練訊號品質與工程效率。
+
+\subsection{Learning-to-Rank}
+
+延續 THUIR 在 WSDM Cup 2023、網頁搜尋排序與 NTCIR-16 WWW-4 任務上的 learning-to-rank 融合思路 \cite{chen2023wsdmcup,li2023websearch,yang2023ntcir}，本研究將 dense 與 lexical 的多種訊號整合為最終排序分數。具體而言，我們先為每個 query--candidate pair 建立 28 個數值特徵，包括 lexical scores、dense score、排序名次、長度統計、placeholder 統計、年份差，以及 1--3 個 chunks 的聚合相似度；完整特徵列表見表~\ref{tab:ltr-features}。這 28 個欄位對應到實際餵入 LightGBM 的全部訓練特徵，而 \texttt{query\_id} 與 \texttt{candidate\_id} 僅作為識別欄，不會進入 ranker 訓練。
+
+排序模型採用 \texttt{lightgbm.LGBMRanker}，其訓練目標為 \texttt{lambdarank}，評估指標為 \texttt{ndcg}。模型會在 validation set 上做 early stopping，並以 validation 表現最佳的 ranker 對 test set 進行推論。換言之，本文的 LTR 並不是把 dense retrieval 換掉，而是把 dense retrieval 視為一個重要但不唯一的 feature source，再用 LightGBM 學習最終融合方式。
+
+\subsection{Post-processing}
+
+在 LTR 輸出 query-wise reranked candidates 後，本研究再加入兩類 post-processing。第一類是 common legal filters，包括 query-specific 年份範圍過濾與自我文件移除（即 query 與 candidate 為同一篇判決書時直接去除）。第二類則是 cut-off 策略搜尋：系統不一定固定保留前 5 名，而是從 validation set 上以大範圍 grid search 比較三種策略的最佳參數，包括固定 top-$k$、依第一名分數比例決定截斷點的 ratio cut-off，以及在前 $N$ 個候選中尋找最大分數落差的 largest-gap cut-off。最佳策略與參數見表~\ref{tab:cutoff-strategies}。

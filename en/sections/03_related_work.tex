@@ -1,0 +1,23 @@
+\section{Related Work}
+
+This study lies at the intersection of four research threads: legal case retrieval, long-context encoders, contrastive dense retrieval training, and downstream learning-to-rank integration.
+
+\subsection{Legal Case Retrieval and COLIEE}
+
+COLIEE Task~1 focuses on case-to-case retrieval. Compared with general web search, legal retrieval involves much longer documents, more formal language, and abundant procedural and citation-heavy content. THUIR@COLIEE 2023 \cite{li2023thuir} combines SAILER, reference sentence extraction, heuristic preprocessing, post-processing, and learning to rank, achieving the strongest performance in that edition. Their work offers two important lessons: structural knowledge and citation positions do matter in legal texts, and query representation may influence final performance as much as the encoder itself. Our work follows this line while re-examining two questions left open by THUIR: whether reference-centered queries remain suitable for long-context encoders, and whether truncation is the main bottleneck for dense legal retrieval.
+
+\subsection{Lexical Retrieval and BM25}
+
+BM25 remains the canonical lexical baseline in information retrieval \cite{robertson2009bm25}. In legal retrieval its role is even stronger than in many other domains because case names, legal concepts, and procedural terms often provide highly precise matching signals. Both THUIR's results and our initial experiments indicate that BM25 can still outperform neural encoders when dense models are aggressively truncated. Therefore, we do not treat BM25 as a weak baseline, but as a strong target that dense retrieval must meaningfully surpass.
+
+\subsection{Long-Context Encoders and ModernBERT}
+
+ModernBERT \cite{warner2024modernbert} is a modernized encoder-only Transformer designed for longer contexts, memory efficiency, and fast inference. For our study, its main attraction is native support for 8192 tokens, which makes it a natural testbed for the hypothesis that long context is a central bottleneck in legal retrieval. However, longer context alone does not guarantee transfer to legal case retrieval: the domain is highly specialized, and both queries and candidates are long judgments. Task-specific supervised fine-tuning and domain adaptation are still required.
+
+\subsection{Contrastive Learning and Negative Sampling}
+
+Contrastive dense retrieval relies on informative positives and negatives. If negatives are too easy, the model learns little; if they are fixed and detached from the model's current confusion pattern, training can also become unstable. We begin with a THUIR-style hard-negative pipeline: take BM25 top-100 candidates as a hard-negative pool and sample 15 negatives per update. In our legal retrieval setting, this almost fails completely. The result suggests that hard negatives must be defined relative to the current model state rather than by lexical ranking alone. This motivates our dynamic negative sampling strategy, where similarity scores are recomputed each epoch and used as sampling probabilities.
+
+\subsection{Learning to Rank and Late Fusion}
+
+THUIR has also demonstrated the effectiveness of learning-to-rank fusion in WSDM Cup 2023, web search ranking, and the NTCIR-16 WWW-4 task \cite{chen2023wsdmcup,li2023websearch,yang2023ntcir}. The shared idea is to avoid relying on a single retrieval score and instead combine lexical, dense, structural, and post-processing signals inside a ranker. We adopt the same spirit but redesign the feature space for legal case retrieval, including placeholder counts, year differences, and aggregated similarities over one to three long-document chunks, together with query-specific year filtering and cut-off search.

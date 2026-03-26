@@ -1,0 +1,11 @@
+\section{Limitations and Future Work}
+
+The first limitation is hardware. Although ModernBERT natively supports 8192 tokens, a \texttt{query:positive:negatives=1:1:15} contrastive setup cannot be trained stably at 8192 tokens on a single RTX 4080 SUPER 16GB, so the final system uses 4096 tokens. This means the present work still does not fully answer whether a truly 8192-token legal contrastive retriever would yield larger gains. Larger-memory GPUs, distributed training, gradient checkpointing, or stronger chunk aggregation could test this more completely.
+
+Second, the domain-adaptive pretraining stage on U.S. case law remains under-trained. After roughly 60 hours, the model has seen only 0.384 epoch of the 6,735,525-case corpus. Its potential is therefore unlikely to be exhausted. Future work can extend DAP, or compare U.S., Canadian, and mixed-jurisdiction corpora for transfer to COLIEE.
+
+Third, although we already integrate LightGBM learning to rank and cut-off based post-processing into the official submission pipeline, reranking still relies mainly on bi-encoder-derived features and a query-wise tree ranker. Cross-encoders, listwise rerankers, or more explicit chunk interaction mechanisms should still offer room for improvement.
+
+Fourth, while year-based scope filtering is shown to help legal retrieval, year extraction currently depends largely on rules and textual patterns. Future work can incorporate more complete metadata extraction, including court level, procedural stage, and richer citation structure, so that scope constraints go beyond a simple temporal rule.
+
+Finally, from an engineering perspective, we observe that fp16 fine-tuning is easier to make work than bf16 in this setup, but the exact reason is still unclear. A more systematic comparison of precision settings, learning rates, temperatures, and negative-update schedules would help clarify the link between numerical stability and legal retrieval quality.

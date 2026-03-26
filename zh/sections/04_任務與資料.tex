@@ -1,0 +1,23 @@
+\section{任務與資料}
+
+本研究以 COLIEE 2026 Task~1 為最終主要評估資料，並以 COLIEE 2025 作為方法探索與失敗實驗分析的輔助資料。Task~1 的目標是：給定一篇查詢判決書，從候選判決書庫中找出最相關的既有案例，並以 top-$k$ 排名方式評估。
+
+\subsection{資料來源與切分}
+
+在目前的實作設定中，COLIEE 2026 的判決書庫共有 7,708 篇文件，並以既有標註再切分為 1,600 個 train queries 與 401 個 valid queries。模型訓練與參數選擇主要根據 train/valid 切分進行，最終分析則報告 2026 valid 與 2026 train 的 top-5 micro-average F1、precision 與 recall；其中 2025 資料主要用來展示訓練失敗、動態負樣本修正，以及 scope filtering 的早期效果。
+
+\subsection{\texttt{processed} 與 \texttt{processed\_new}}
+
+本研究特別比較兩種 query 表示方式。第一種是 \texttt{processed}，即以前處理後的整篇判決書作為 query 與 candidate；第二種是 \texttt{processed\_new}，其設計延續 THUIR 的 reference sentence extraction 思路，只保留 \texttt{FRAGMENT\_SUPPRESSED}、\texttt{REFERENCE\_SUPPRESSED}、\texttt{CITATION\_SUPPRESSED} 等佔位符附近的上下文句子，若長度過短則再以前處理文本補足。THUIR 的設定將此做法視為能強化引用區域的 query 視角；本研究則將其作為一個必須重新驗證的假設，而非直接接受。為了公平比較，本研究在 \texttt{processed} 與 \texttt{processed\_new} 的 ablation 中，固定候選文件皆使用 \texttt{processed} embeddings，僅切換 query 的表示方式。
+
+\texttt{processed} 的產生流程來自 \texttt{process.py}。程式會先從原始判決書中定位第一個段落標記 \texttt{[1]} 之後的正文，移除開頭連續空行與 fragment-only 行，然後做行級合併，將被換行打斷但尚未形成完整句號的文字接回前一句。接著，系統會去除 \texttt{FRAGMENT\_SUPPRESSED} 等 suppression placeholders 的表面字串、腳註式編號、\texttt{[translation]}、\texttt{[sic]}、\texttt{[DATE\_SUPPRESSED]} 等編輯性標記，並以語言偵測過濾法文段落，只保留英文內容。若文件正文沒有內嵌摘要，且 \texttt{summary.py} 事先從原始檔成功擷取到摘要，該摘要會被加到文件前端。最終得到的是「保留全文語意、去除噪訊標記」的整篇判決書版本。
+
+\texttt{processed\_new} 的產生流程則來自 \texttt{reference.py}。系統先以句子切分原始判決書，只擷取包含 \texttt{FRAGMENT\_SUPPRESSED}、\texttt{REFERENCE\_SUPPRESSED} 或 \texttt{CITATION\_SUPPRESSED} 的句子，以及它前一句或後一句作為局部上下文：若 placeholder 出現在句子前半部，就保留前一句與當前句；若出現在句子後半部，就保留當前句與後一句。之後它會套用與 \texttt{processed} 幾乎相同的清理與語言過濾流程。最後，若擷取出的文字不足 512 個英文 word tokens，程式會再從 \texttt{processed} 版本的前段句子往前補，直到接近 512 為止。因此，\texttt{processed\_new} 不是純粹的引用片段，而是「以引用上下文為核心、必要時由整篇文本前段補長」的 query 版本。
+
+\subsection{長文本特性}
+
+如表~\ref{tab:length-stats} 所示，COLIEE 2026 的 \texttt{processed} 文件具有明顯長文本特性。更重要的是，已有 94.80\% 的文件短於 12,288 tokens，這使得後續 learning-to-rank 以 3 個 4096-token chunks 近似整篇文件成為合理設計：大多數案件可以在不額外提高 encoder 上限的情況下，被 chunk-based reranking 幾乎完整覆蓋。
+
+\subsection{法律領域繼續預訓練資料}
+
+除了 COLIEE 官方資料外，本研究亦使用 Hugging Face 上的 \texttt{common-pile/caselaw\_access\_project\_filtered} 作為繼續預訓練語料，其連結為 \url{https://huggingface.co/datasets/common-pile/caselaw_access_project_filtered}。該資料包含 6,735,525 篇美國判決書，時間跨度約 365 年。這個額外語料並不直接提供 COLIEE 監督訊號，而是用來讓 ModernBERT 在進入對比式 fine-tuning 前，先學到更接近法律文本分布的 encoder 表徵。受限於單張 RTX 4080 SUPER 16GB 與訓練時間成本，這個 masked language modeling continued pretraining 約訓練 60 小時後，仍只覆蓋不到半個 epoch，因此本文將其視為「有用但尚未完全釋放潛力」的 domain adaptation 步驟。

@@ -1,0 +1,257 @@
+\section{Results and Analysis}
+
+\subsection{Query Representation Comparison}
+
+Table~\ref{tab:query-ablation} compares two query representations on COLIEE 2026 validation: full-document queries (\texttt{processed}) and reference sentence extraction queries (\texttt{processed\_new}). Both models show the same conclusion: the full document is clearly better. For SAILER, F1@5 drops from 0.1213 to 0.1022; for ModernBERT DAP+SFT, it drops from 0.1650 to 0.1038. This indicates that THUIR's reference-centered query design is no longer the best choice once the retrieval model is expected to benefit from longer context.
+
+The implication is important: a long-context encoder only helps when the query itself preserves enough context. If the query is compressed into a few citation-centered sentences beforehand, the model cannot actually exploit the longer legal discourse available in the full judgment.
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{lcc}
+    \toprule
+    Model & \texttt{processed} & \texttt{processed\_new} \\
+    \midrule
+    SAILER-cos & 0.1213 & 0.1022 \\
+    ModernBERT fp16-cos & 0.1650 & 0.1038 \\
+    \bottomrule
+  \end{tabular}
+  \caption{COLIEE 2026 validation top-5 micro-F1. Candidate documents are fixed to \texttt{processed}; only the query representation is changed.}
+  \label{tab:query-ablation}
+\end{table}
+
+\subsection{Main Model Comparison on COLIEE 2026 Validation and Training}
+
+Tables~\ref{tab:main-results-valid} and \ref{tab:main-results-train} summarize the main model comparisons on COLIEE 2026 validation and training. On validation, four conclusions are clear. First, untuned ModernBERT is almost unusable for legal retrieval: the origin model reaches only 0.0142 F1@5 under cosine similarity and 0.0022 under dot product. Second, DAP alone is not enough to turn the encoder into a usable retriever; in our 2025 exploration, DAP-only no-SFT runs still remain at only 0.0116 (cos) and 0.0013 (dot). Third, SFT already lets ModernBERT surpass both BM25 and SAILER, reaching 0.1573 F1@5. Fourth, adding DAP and scope-filtered training on top of SFT further improves validation F1@5 to 0.1650.
+
+On 2026 training queries, the effect of DAP is even larger: ModernBERT + SFT reaches about 0.2262 F1@5, while ModernBERT + DAP + SFT rises to about 0.3842. This pattern of large train gain but small validation gain matches the engineering context of our study: the U.S. case-law DAP stage runs for about 60 hours but still covers only 0.384 epoch, so domain adaptation has started to help substantially but has not yet been fully converted into generalization gains.
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabular}{lccccccc}
+    \toprule
+    Model & Similarity & DAP & SFT & SFT scopeFilter & F1@5 & Precision@5 & Recall@5 \\
+    \midrule
+    BM25 & lexical & N & N & -- & 0.1499 & 0.1370 & 0.1655 \\
+    SAILER & cos & N & N & -- & 0.1213 & 0.1107 & 0.1341 \\
+    SAILER & dot & N & N & -- & 0.1114 & 0.1017 & 0.1232 \\
+    ModernBERT origin & cos & N & N & -- & 0.0142 & 0.0130 & 0.0157 \\
+    ModernBERT origin & dot & N & N & -- & 0.0022 & 0.0020 & 0.0024 \\
+    ModernBERT + SFT & cos & N & Y & N & 0.1573 & 0.1436 & 0.1739 \\
+    ModernBERT + SFT & dot & N & Y & N & 0.1573 & 0.1436 & 0.1739 \\
+    ModernBERT + DAP + SFT & cos & Y & Y & Y & 0.1650 & 0.1506 & 0.1824 \\
+    ModernBERT + DAP + SFT & dot & Y & Y & Y & 0.1650 & 0.1506 & 0.1824 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Main model comparison on COLIEE 2026 validation data.}
+  \label{tab:main-results-valid}
+  \vspace{2pt}
+  \begin{minipage}{0.97\textwidth}
+    \footnotesize
+    \textit{Notes.} DAP = domain-adaptive pretraining; SFT = supervised fine-tuning; SFT scopeFilter means query-specific temporal scope constraints are used when constructing query / positive / negative pairs. SAILER is directly inferred from \texttt{CSHaitao/SAILER\_en\_finetune} instead of being retrained on our split.
+  \end{minipage}
+\end{table*}
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabular}{lccccccc}
+    \toprule
+    Model & Similarity & DAP & SFT & SFT scopeFilter & F1@5 & Precision@5 & Recall@5 \\
+    \midrule
+    BM25 & lexical & N & N & -- & 0.1566 & 0.1429 & 0.1733 \\
+    SAILER & cos & N & N & -- & 0.1187 & 0.1083 & 0.1313 \\
+    SAILER & dot & N & N & -- & 0.1085 & 0.0990 & 0.1201 \\
+    ModernBERT origin & cos & N & N & -- & 0.0153 & 0.0140 & 0.0170 \\
+    ModernBERT origin & dot & N & N & -- & 0.0029 & 0.0026 & 0.0032 \\
+    ModernBERT + SFT & cos & N & Y & N & 0.2262 & 0.2064 & 0.2503 \\
+    ModernBERT + SFT & dot & N & Y & N & 0.2261 & 0.2063 & 0.2502 \\
+    ModernBERT + DAP + SFT & cos & Y & Y & Y & 0.3842 & 0.3505 & 0.4252 \\
+    ModernBERT + DAP + SFT & dot & Y & Y & Y & 0.3841 & 0.3504 & 0.4250 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Main model comparison on COLIEE 2026 training data.}
+  \label{tab:main-results-train}
+  \vspace{2pt}
+  \begin{minipage}{0.97\textwidth}
+    \footnotesize
+    \textit{Notes.} BM25 is a lexical baseline and requires no training. Both SAILER rows are inferred directly from \texttt{CSHaitao/SAILER\_en\_finetune}; they are not trained on this 2026 training split.
+  \end{minipage}
+\end{table*}
+
+\subsection{Failure of Static BM25 Hard Negatives}
+
+Following a THUIR-style setup, we first use BM25 top-100 candidates as a hard-negative pool and sample 15 negatives for each update. On COLIEE 2025 validation, however, this gives only about 0.00515 F1, nearly identical to random guessing at 0.00451. In other words, although these negatives look difficult from a lexical ranking perspective, they do not provide a useful training signal and the model essentially does not learn.
+
+This failure is an important result rather than an error to be omitted. It shows that negative difficulty in legal case retrieval cannot be approximated by BM25 rank alone. Once we replace the static design with dynamic negative sampling based on current model scores, the trajectory changes immediately: the exploratory 2025 validation F1 jumps to 0.12834, and later fp16 fine-tuning with scope filtering stays in the 0.11931--0.12189 range. The key point is that training does not start working because of ModernBERT alone; it starts working because the negatives are redefined in a task-relevant way.
+
+\subsection{Why Scope Filtering Helps}
+
+The intuition behind scope filtering is legal rather than purely technical. When a judge cites or notices prior cases, those citations should come from the past, not the future. If the model is trained or evaluated on candidates that are temporally implausible, the learning signal becomes noisier. We therefore build a query-specific year scope in advance and reuse it during training and inference instead of re-parsing years every time.
+
+Table~\ref{tab:scopefilter-effect} shows the gain of scope filtering on COLIEE 2025 validation. Simply adding scope filtering to 4096-token ModernBERT fp16 SFT raises F1@5 from 0.11931 to 0.12189, with precision and recall both improving. The gain is modest but stable, and it matches the temporal structure of legal citations.
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{lccc}
+    \toprule
+    Setting & F1@5 & Precision@5 & Recall@5 \\
+    \midrule
+    SFT in fp16 & 0.11931 & 0.11011 & 0.13019 \\
+    SFT in fp16 + scopeFilter & 0.12189 & 0.11250 & 0.13300 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Effect of scope filtering on COLIEE 2025 validation. Both rows use 4096-token ModernBERT fp16 SFT; the only difference is whether the SFT training data are scope-filtered.}
+  \label{tab:scopefilter-effect}
+\end{table}
+
+\subsection{Post-hoc Audit of Scope Filtering}
+
+A post-hoc audit shows that the shared scope file actually used during 2026 train/validation SFT and standard retrieval was built from \texttt{processed} text rather than raw metadata. This happened because the early scope-building step extracted years from cleaned text, while \texttt{processed} removes the metadata before the first body marker \texttt{[1]}; in some cases that removed portion contains the decision date. Since the model had already been trained, we keep the result but report the implementation detail explicitly. In plain terms, \texttt{TASK1\_SCOPE\_PATH} points to the older scope built from \texttt{processed} text, whereas the validation-time LTR setting \texttt{COLIEE\_LTR\_VALID\_SCOPE\_PATH} points to a raw scope built from the original judgments.
+
+Fortunately, the difference between processed-based and raw-based scope is smaller than expected. As shown in Table~\ref{tab:scope-overlap}, for the 2,001 train/validation queries in COLIEE 2026, the global Jaccard overlap is 0.9447 and the mean per-query Jaccard is 0.9291; on average, the processed-based scope still covers 97.86\% of the raw-based candidates. The legacy test scope file also remains highly similar to the raw test scope. More importantly, the final 2026 official LTR / submission pipeline switches back to raw-year scope at test time, so the final submission uses a raw-based temporal filter rather than the legacy processed-based one.
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{lccc}
+    \toprule
+    Comparison & Queries & Global Jaccard & Mean per-query Jaccard \\
+    \midrule
+    train/valid: processed scope vs raw scope & 2,001 & 0.9447 & 0.9291 \\
+    test: legacy scope vs raw scope & 400 & 0.9526 & 0.9438 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Overlap between scopes built from different year sources. For train/valid, the processed-based scope still covers 97.86\% of the raw-based candidates on average; the final official test submission uses the raw-based scope.}
+  \label{tab:scope-overlap}
+\end{table}
+
+\subsection{Learning to Rank and Post-processing}
+
+Our learning-to-rank stage is not just a black-box reranker placed after dense retrieval. It is a structured fusion layer for legally meaningful signals. Table~\ref{tab:ltr-features} lists the exact 28 features used in the current LTR pipeline, including lexical scores, dense score, ranking positions, length statistics, placeholder statistics, year difference, and aggregated similarities over up to three chunks. We verified these entries directly against the current feature pipeline; \texttt{query\_id} and \texttt{candidate\_id} are identifiers only and are not used as training features. The chunk-based features are especially important because they are tied directly to the 3 $\times$ 4096-token design motivated by Table~\ref{tab:length-stats}.
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabularx}{\textwidth}{l>{\raggedright\arraybackslash}X}
+    \toprule
+    Feature Name & Description \\
+    \midrule
+    \texttt{bm25\_score} & BM25 lexical score between query and candidate. \\
+    \texttt{qld\_score} & Query likelihood score. \\
+    \texttt{bm25\_ngram\_score} & BM25 score from an n-gram / phrase index. \\
+    \texttt{dense\_score} & Dense retrieval similarity from the bi-encoder. \\
+    \texttt{bm25\_rank} & Candidate rank under BM25. \\
+    \texttt{dense\_rank} & Candidate rank under dense retrieval. \\
+    \texttt{query\_length} & Lexical token count of the query. \\
+    \texttt{doc\_length} & Lexical token count of the candidate. \\
+    \texttt{len\_ratio} & \texttt{query\_length / doc\_length}. \\
+    \texttt{len\_diff} & \texttt{|query\_length - doc\_length|}. \\
+    \texttt{query\_citation\_num} & Number of \texttt{CITATION\_SUPPRESSED} markers in the query. \\
+    \texttt{query\_reference\_num} & Number of \texttt{REFERENCE\_SUPPRESSED} markers in the query. \\
+    \texttt{query\_fragment\_num} & Number of \texttt{FRAGMENT\_SUPPRESSED} markers in the query. \\
+    \texttt{doc\_citation\_num} & Number of \texttt{CITATION\_SUPPRESSED} markers in the candidate. \\
+    \texttt{doc\_reference\_num} & Number of \texttt{REFERENCE\_SUPPRESSED} markers in the candidate. \\
+    \texttt{doc\_fragment\_num} & Number of \texttt{FRAGMENT\_SUPPRESSED} markers in the candidate. \\
+    \texttt{query\_citation\_ratio} & Query citation placeholders divided by query length. \\
+    \texttt{query\_reference\_ratio} & Query reference placeholders divided by query length. \\
+    \texttt{query\_fragment\_ratio} & Query fragment placeholders divided by query length. \\
+    \texttt{doc\_citation\_ratio} & Candidate citation placeholders divided by candidate length. \\
+    \texttt{doc\_reference\_ratio} & Candidate reference placeholders divided by candidate length. \\
+    \texttt{doc\_fragment\_ratio} & Candidate fragment placeholders divided by candidate length. \\
+    \texttt{query\_year} & Extracted year of the query case. \\
+    \texttt{doc\_year} & Extracted year of the candidate case. \\
+    \texttt{year\_diff} & \texttt{query\_year - doc\_year}; set to 0 when the year is unknown. \\
+    \texttt{chunk\_sim\_max} & Maximum pairwise similarity across all 1--3 chunk pairs. \\
+    \texttt{chunk\_sim\_mean} & Mean pairwise similarity across all 1--3 chunk pairs. \\
+    \texttt{chunk\_sim\_top2\_mean} & Mean of the top two chunk-pair similarities. \\
+    \bottomrule
+  \end{tabularx}
+  \caption{All 28 features actually used in learning to rank. \texttt{query\_id} and \texttt{candidate\_id} are identifiers only and are not passed into the ranker.}
+  \label{tab:ltr-features}
+\end{table*}
+
+The validation cut-off search results are shown in Table~\ref{tab:cutoff-strategies}. We reran this search on the same raw-scope LightGBM rerank outputs and selected the winner explicitly by validation F1. \texttt{ratio\_cutoff} still performs best with parameters \texttt{p=0.99, l=4, h=12}, validation F1 of 0.178258, nDCG@10 of 0.236228, and P@5 / R@5 of 0.138653 / 0.235862. Importantly, the reranked candidates have already gone through upstream scope filtering, so later common legal filtering removes zero extra scope-violating rows on both validation and test. The rows that are consistently removed are self-documents: 401 on validation and 400 on test. In practice, post-processing is therefore used mainly to keep legal constraints consistent and to choose a better submission-oriented cut-off rule, and the official submission uses this \texttt{ratio\_cutoff} version.
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabular}{lcccccccc}
+    \toprule
+    Strategy & Best Parameters & Precision & Recall & F1 & nDCG@10 & P@5 & R@5 & Avg.\ Kept \\
+    \midrule
+    fixed\_topk & $k=8$ & 0.119389 & 0.240276 & 0.159517 & 0.251517 & 0.143142 & 0.245197 & 8.00 \\
+    largest\_gap\_cutoff & $N=12,\ buffer=0,\ l=1,\ h=10$ & 0.139634 & 0.205772 & 0.166371 & 0.229076 & 0.129676 & 0.220818 & 5.86 \\
+    ratio\_cutoff & $p=0.99,\ l=4,\ h=12$ & 0.148598 & 0.222710 & 0.178258 & 0.236228 & 0.138653 & 0.235862 & 5.96 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Best parameters and performance of three cut-off strategies on COLIEE 2026 validation. Precision / recall / F1 are computed on the variable-length submission set after cut-off, while nDCG@10, P@5, and R@5 summarize query-level ranking quality.}
+  \label{tab:cutoff-strategies}
+\end{table*}
+
+Table~\ref{tab:ltr-pipeline-progression} is now written as a process-oriented comparison of ``dense retrieval $\rightarrow$ LTR $\rightarrow$ cut-off,'' and its columns are renamed to generic F1 / Precision / Recall because the last three rows are not fixed top-5 results. Instead, they are variable-length final candidate sets produced by three mutually exclusive cut-off rules. One point is especially important here: the current LTR stage is optimized for LambdaRank / nDCG rather than F1@5 itself. As a result, the raw reranked top-5 list does not have to outperform the dense top-5 list; the benefit of LTR can show up later, after cut-off search, when the system is no longer forced to keep exactly five candidates for every query. The first three rows therefore remain fixed top-5 micro metrics: \texttt{ModernBERT + DAP + SFT (cos)} keeps the same COLIEE 2026 validation top-5 reference as Table~\ref{tab:main-results-valid}, namely 0.164982 / 0.150623 / 0.182367; adding LTR feature fusion gives 0.159489 / 0.143142 / 0.180050 on validation top-5; and ``+ Filtering by trial year'' stays identical because the validation rerank input already satisfies the upstream year scope, so no extra scope-violating candidates remain to be removed. The last three rows are the three alternative cut-off choices: \texttt{fixed\_topk} ($k=8$) gives 0.159517 / 0.119389 / 0.240276, \texttt{largest\_gap\_cutoff} ($N=12, buffer=0, l=1, h=10$) improves to 0.166371 / 0.139634 / 0.205772, and \texttt{ratio\_cutoff} ($p=0.99, l=4, h=12$) performs best at 0.178258 / 0.148598 / 0.222710. This is also the version used for the final competition submission. In other words, if we look only at validation top-5, raw LTR does not exceed the standalone dense baseline; the main gain appears after cut-off search and in the final submission format.
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{lccc}
+    \toprule
+    model & F1 & Precision & Recall \\
+    \midrule
+    ModernBERT + DAP + SFT (top5) & 0.164982 & 0.150623 & 0.182367 \\
+    + Ensemble (top5) & 0.159489 & 0.143142 & 0.180050 \\
+    + Filtering by trial year (top5) & 0.159489 & 0.143142 & 0.180050 \\
+    + fixed\_topk ($k=8$) & 0.159517 & 0.119389 & 0.240276 \\
+    or + largest\_gap\_cutoff ($N=12,\ buffer=0,\ l=1,\ h=10$) & 0.166371 & 0.139634 & 0.205772 \\
+    or + ratio\_cutoff ($p=0.99,\ l=4,\ h=12$) & 0.178258 & 0.148598 & 0.222710 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Process-oriented comparison of dense retrieval, LTR, and post-processing on COLIEE 2026 validation. The first three rows are fixed top-5 micro metrics; the last three rows are three mutually exclusive cut-off choices applied to the same LTR output, so their F1 / Precision / Recall refer to variable-length final candidate sets rather than fixed top-5. The official submission uses \texttt{ratio\_cutoff}.}
+  \label{tab:ltr-pipeline-progression}
+\end{table}
+
+According to the official Task~1 results page \cite{coliee2026task1results}, our final submission \texttt{task1\_flnlpltr} achieves 0.2935 F1, outperforming both the dense-only run \texttt{task1\_flnlpembed} (0.2709) and the BM25-only run \texttt{task1\_flnlpbm25} (0.2496), and ranks 7th among 22 teams. Table~\ref{tab:official-ranking} lists the best run from each team. Although learning to rank is only a late-stage fusion component, it still pushes our system beyond the dense-only baseline.
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabular}{rllccc}
+    \toprule
+    Rank & Team & Best Run & F1 & Precision & Recall \\
+    \midrule
+    1 & NOWJ & \texttt{submission\_2} & 0.4220 & 0.4235 & 0.4206 \\
+    2 & JNLP & \texttt{random\_forest} & 0.4126 & 0.4341 & 0.3931 \\
+    3 & SIL & \texttt{submission\_sil2} & 0.3871 & 0.4186 & 0.3600 \\
+    4 & mezza & \texttt{task\_1\_mezzanino} & 0.3289 & 0.3161 & 0.3429 \\
+    5 & INTIT & \texttt{3.intit\_bm25\_year} & 0.3165 & 0.3249 & 0.3086 \\
+    6 & DU & \texttt{du3} & 0.3141 & 0.2945 & 0.3366 \\
+    7 & FLNLP & \texttt{task1\_flnlpltr} & 0.2935 & 0.2619 & 0.3337 \\
+    8 & UA & \texttt{ua\_run3} & 0.2666 & 0.2038 & 0.3851 \\
+    9 & UCD-CS & \texttt{ucdcs3} & 0.2645 & 0.2480 & 0.2834 \\
+    10 & JUNLLP & \texttt{task1\_run2\_results} & 0.2525 & 0.2193 & 0.2977 \\
+    11 & 74688 & \texttt{task-1-ualbany} & 0.2346 & 0.2130 & 0.2611 \\
+    12 & UB2026 & \texttt{run1} & 0.2233 & 0.2338 & 0.2137 \\
+    13 & Sach & \texttt{sach\_task1\_run2} & 0.2231 & 0.1631 & 0.3531 \\
+    14 & BJPWH & \texttt{bjpwh3} & 0.2101 & 0.1510 & 0.3451 \\
+    15 & ABAI & \texttt{run2recall} & 0.1771 & 0.1596 & 0.1989 \\
+    16 & AIIRLab & \texttt{task1\_aiirqwen} & 0.1516 & 0.2642 & 0.1063 \\
+    17 & bosch & \texttt{bosch\_task1\_run} & 0.1466 & 0.0892 & 0.4103 \\
+    18 & KeioAndrewShin & \texttt{task1\_submission\_v9} & 0.1383 & 0.1527 & 0.1263 \\
+    19 & CityUMO & \texttt{task1\_submission} & 0.0000 & 0.0000 & 0.0000 \\
+    20 & ClaUSurf & \texttt{task1\_clsmhc13f} & 0.0000 & 0.0000 & 0.0000 \\
+    21 & NIT26 & \texttt{task1\_run1} & 0.0000 & 0.0000 & 0.0000 \\
+    22 & NRCBMU & \texttt{hyb1sailbge} & 0.0000 & 0.0000 & 0.0000 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Best official Task~1 result from each team in COLIEE 2026 \cite{coliee2026task1results}.}
+  \label{tab:official-ranking}
+\end{table*}
+
+\subsection{Re-reading the THUIR@COLIEE 2023 Validation Numbers}
+
+Finally, we add one cautious reinterpretation of THUIR@COLIEE 2023. This is an inference rather than a verified fact: their reported ``validation'' numbers may be somewhat optimistic because the split protocol is not directly comparable to later COLIEE train/validation conventions. If part of the easier training-style queries is mixed into a validation-like evaluation, the result can move toward the midpoint between train performance and truly held-out validation performance.
+
+For example, if a system reaches F1 around 0.16 on training-style queries and around 0.12 on a truly held-out validation set, their midpoint is approximately 0.14. This scale is close to THUIR Table~3 values such as SAILER 0.1385 and unlimited BM25 0.1541. This does not mean THUIR's numbers are wrong. It means that when we compare legal retrieval results across years and split protocols, the evaluation protocol itself may materially affect the conclusion.

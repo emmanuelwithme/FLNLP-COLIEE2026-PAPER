@@ -1,0 +1,257 @@
+\section{結果與分析}
+
+\subsection{Query 表示方式比較}
+
+表~\ref{tab:query-ablation} 比較了 2026 valid 上兩種 query 表示：整篇判決書（\texttt{processed}）與 reference sentence extraction（\texttt{processed\_new}）。兩個模型都呈現一致結論：使用整篇判決書作為 query 明顯較佳。對 SAILER 而言，F1@5 自 0.1213 降至 0.1022；對 ModernBERT DAP+SFT 而言，則自 0.1650 降至 0.1038。這表示 THUIR 在 2023 年所採用的 reference-centered query，在本研究的長文本 dense retrieval 設定下已不再是最合適選擇。
+
+這個結果的重要意義在於：長文本模型的優勢只有在 query 本身保留足夠上下文時才會展現。若先以 heuristic 的方式把 query 壓縮成少數引用片段，模型即使能處理長文本，也無法真正利用長文帶來的額外法律脈絡。
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{lcc}
+    \toprule
+    模型 & \texttt{processed} & \texttt{processed\_new} \\
+    \midrule
+    SAILER-cos & 0.1213 & 0.1022 \\
+    ModernBERT fp16-cos & 0.1650 & 0.1038 \\
+    \bottomrule
+  \end{tabular}
+  \caption{COLIEE 2026 valid top-5 micro-F1。候選文件固定使用 \texttt{processed}，僅切換 query 表示。}
+  \label{tab:query-ablation}
+\end{table}
+
+\subsection{COLIEE 2026 valid 與 train 的主要模型比較}
+
+表~\ref{tab:main-results-valid} 與表~\ref{tab:main-results-train} 分別整理了 2026 valid 與 2026 train 的主要模型比較。先看 2026 valid，可得到四個明確結論。第一，未經 SFT 的 ModernBERT origin 幾乎無法直接應用於法律檢索，cos F1@5 只有 0.0142，dot 更只有 0.0022。第二，單靠 DAP 並不足以把 encoder 直接變成可用的 retrieval 模型；這類 no-SFT 結果在本研究的 2025 探索階段仍只有 cos 0.0116、dot 0.0013，顯示 continued pretraining 本身不能取代 task-specific supervision。第三，SFT 後的 ModernBERT 已能超越 BM25 與 SAILER，valid F1@5 來到 0.1573。第四，在 SFT 之上再加入 DAP 與 scope-filtered 訓練資料後，valid F1@5 進一步提升到 0.1650。
+
+再看 2026 train，DAP 的效應更明顯：ModernBERT + SFT 的 train F1@5 約為 0.2262，而 ModernBERT + DAP + SFT 則提升到約 0.3842。這種 ``train 大幅提升、valid 小幅提升'' 的現象，與本文的工程背景相符：美國判決書上的 continued pretraining 約訓練 60 小時，仍只覆蓋不到半個 epoch，因此 domain adaptation 的潛力已開始顯現，但尚未完全轉化成泛化收益。
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabular}{lccccccc}
+    \toprule
+    模型 & 相似度 & DAP & SFT & SFT scopeFilter & F1@5 & Precision@5 & Recall@5 \\
+    \midrule
+    BM25 & lexical & N & N & -- & 0.1499 & 0.1370 & 0.1655 \\
+    SAILER & cos & N & N & -- & 0.1213 & 0.1107 & 0.1341 \\
+    SAILER & dot & N & N & -- & 0.1114 & 0.1017 & 0.1232 \\
+    ModernBERT origin & cos & N & N & -- & 0.0142 & 0.0130 & 0.0157 \\
+    ModernBERT origin & dot & N & N & -- & 0.0022 & 0.0020 & 0.0024 \\
+    ModernBERT + SFT & cos & N & Y & N & 0.1573 & 0.1436 & 0.1739 \\
+    ModernBERT + SFT & dot & N & Y & N & 0.1573 & 0.1436 & 0.1739 \\
+    ModernBERT + DAP + SFT & cos & Y & Y & Y & 0.1650 & 0.1506 & 0.1824 \\
+    ModernBERT + DAP + SFT & dot & Y & Y & Y & 0.1650 & 0.1506 & 0.1824 \\
+    \bottomrule
+  \end{tabular}
+  \caption{COLIEE 2026 valid data 的主要模型比較。}
+  \label{tab:main-results-valid}
+  \vspace{2pt}
+  \begin{minipage}{0.97\textwidth}
+    \footnotesize
+    \textit{Notes.} DAP = domain-adaptive pretraining；SFT = supervised fine-tuning；SFT scopeFilter 表示在建立每個 query / positive / negative docs pair 時，使用 query-specific 年份範圍約束過濾不合理候選。SAILER 來自 \texttt{CSHaitao/SAILER\_en\_finetune}，不是在本研究切分上重新訓練；這對 SAILER 屬於相對有利的設定。
+  \end{minipage}
+\end{table*}
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabular}{lccccccc}
+    \toprule
+    模型 & 相似度 & DAP & SFT & SFT scopeFilter & F1@5 & Precision@5 & Recall@5 \\
+    \midrule
+    BM25 & lexical & N & N & -- & 0.1566 & 0.1429 & 0.1733 \\
+    SAILER & cos & N & N & -- & 0.1187 & 0.1083 & 0.1313 \\
+    SAILER & dot & N & N & -- & 0.1085 & 0.0990 & 0.1201 \\
+    ModernBERT origin & cos & N & N & -- & 0.0153 & 0.0140 & 0.0170 \\
+    ModernBERT origin & dot & N & N & -- & 0.0029 & 0.0026 & 0.0032 \\
+    ModernBERT + SFT & cos & N & Y & N & 0.2262 & 0.2064 & 0.2503 \\
+    ModernBERT + SFT & dot & N & Y & N & 0.2261 & 0.2063 & 0.2502 \\
+    ModernBERT + DAP + SFT & cos & Y & Y & Y & 0.3842 & 0.3505 & 0.4252 \\
+    ModernBERT + DAP + SFT & dot & Y & Y & Y & 0.3841 & 0.3504 & 0.4250 \\
+    \bottomrule
+  \end{tabular}
+  \caption{COLIEE 2026 train data 的主要模型比較。}
+  \label{tab:main-results-train}
+  \vspace{2pt}
+  \begin{minipage}{0.97\textwidth}
+    \footnotesize
+    \textit{Notes.} BM25 為 lexical baseline，不需要訓練。SAILER 的 cos 與 dot 兩列同樣直接使用 \texttt{CSHaitao/SAILER\_en\_finetune} 推論編碼與相似度計算，並未在這份 2026 train split 上重新訓練。
+  \end{minipage}
+\end{table*}
+
+\subsection{靜態 BM25 Hard Negatives 的失敗與動態負樣本的必要性}
+
+依照類似 THUIR@COLIEE 2023 論文作法，本研究先採用 BM25 top-100 建立 hard-negative pool，並在每次更新時從中抽取 15 篇作為負樣本。然而在 COLIEE 2025 valid 上，這個設定只得到約 0.00515 的 F1，幾乎與 random guess 的 0.00451 相同。換言之，雖然這些負樣本在 lexical ranking 上看似困難，但它們並沒有形成足夠有效的訓練訊號，模型基本上沒有真正學起來。
+
+這個失敗經驗在本文中應被視為重要結果，而不是應被刪去的錯誤。它說明法律判決檢索中的 negative difficulty 不能僅由 BM25 排名近似，否則模型可能只是在無效訊號上反覆更新。當我們把負樣本選取改為「每個 epoch 依當前模型分數動態抽樣」之後，結果立即出現明顯轉折：探索階段的 2025 valid F1 提升到 0.12834，而後續換用 fp16 fine-tuning 與 scope filtering 之後，仍維持在 0.11931 至 0.12189 的區間。也就是說，真正讓模型開始收斂的關鍵不是 ``換成 ModernBERT'' 本身，而是負樣本如何被定義。
+
+\subsection{為何 scopeFilter 會提升訓練效果}
+
+scope filtering 的直覺其實很法律：法官在引用或 notice 既有判決時，只會引用比當前案件更早出現的判例，而不會引用未來案件。因此，若讓模型在訓練或推論時自由看到 ``來自未來'' 的文件，等於把一批法律上不合理的候選也當作學習與排序對象，會污染訓練訊號。為此，本研究先為每個 query 建立年份，再預先建立 query-specific 的 candidate scope 索引，後續就不需要在每次訓練或推論時重新做年份解析與過濾。
+
+表~\ref{tab:scopefilter-effect} 顯示了 scope filtering 的實際效益。在 COLIEE 2025 valid 上，單純把 ModernBERT fp16 SFT 的訓練資料改成 scope-filtered 後，F1@5 由 0.11931 提升到 0.12189，precision 與 recall 也同步提升。這個增幅並不巨大，但方向穩定，且與法律引用的時間因果結構一致。
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{lccc}
+    \toprule
+    設定 & F1@5 & Precision@5 & Recall@5 \\
+    \midrule
+    SFT in fp16 & 0.11931 & 0.11011 & 0.13019 \\
+    SFT in fp16 + scopeFilter & 0.12189 & 0.11250 & 0.13300 \\
+    \bottomrule
+  \end{tabular}
+  \caption{COLIEE 2025 valid 上 scope filtering 的效果。模型皆為 4096-token ModernBERT fp16 SFT；兩者差異僅在於 SFT 訓練資料是否加上年份範圍約束。}
+  \label{tab:scopefilter-effect}
+\end{table}
+
+\subsection{ScopeFilter 的事後稽核}
+
+事後稽核顯示，2026 train/valid 期間實際用於 SFT 與一般推論的 shared scope 檔，確實是由 \texttt{processed} 文本抽年份建立，而不是由 raw metadata 建立。原因是早期建立 scope 時直接從已清理過的文本抽取年份，而 \texttt{processed} 會移除正文前 \texttt{[1]} 以前的 metadata；這些位置有時正好包含判決日期。這是實作上的失誤，但由於模型已訓練完成，本文僅如實揭露並重新比對其影響。若用程式設定的白話來說，\texttt{TASK1\_SCOPE\_PATH} 指向的是從 \texttt{processed} 文本建立的舊版 scope；而 LTR validation 使用的 \texttt{COLIEE\_LTR\_VALID\_SCOPE\_PATH}，則改指向從原始判決書抽年份建立的 raw scope。
+
+幸運的是，\texttt{processed}-based scope 與 raw-based scope 的差異沒有想像中大。表~\ref{tab:scope-overlap} 顯示，對 2026 train/valid 的 2,001 個 queries 而言，兩者的 global Jaccard overlap 為 0.9447、平均 per-query Jaccard 為 0.9291，而且 \texttt{processed}-based scope 平均仍覆蓋 97.86\% 的 raw-based 候選。對 test 而言，舊版 test scope 與 raw-based test scope 的 overlap 也維持在相近水準。不過，最終用於 2026 官方提交的 LTR / submission pipeline 已改用 raw year scope，亦即 test 階段的年份過濾是從原始判決書抽取年份後再建立候選範圍。
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{lccc}
+    \toprule
+    比較對象 & Queries & Global Jaccard & Mean per-query Jaccard \\
+    \midrule
+    train/valid: processed scope vs raw scope & 2,001 & 0.9447 & 0.9291 \\
+    test: legacy scope vs raw scope & 400 & 0.9526 & 0.9438 \\
+    \bottomrule
+  \end{tabular}
+  \caption{不同年份抽取來源所建立 scope 的重疊情形。對 train/valid 而言，\texttt{processed}-based scope 平均可覆蓋 97.86\% 的 raw-based 候選；最終 official test submission 則改用 raw-based scope。}
+  \label{tab:scope-overlap}
+\end{table}
+
+\subsection{Learning-to-Rank 與 Post-processing}
+
+本研究的 learning-to-rank 並不是單純在 dense retrieval 後面接一個黑箱排序器，而是把法律檢索中特別有意義的訊號結構化後交給 LightGBM 學習。表~\ref{tab:ltr-features} 列出本研究實際使用的 28 個特徵，包含 lexical scores、dense score、rank positions、長度、placeholder 統計、年份差，以及最多 3 個 chunks 的聚合相似度。這 28 欄已逐一對照目前的 LTR feature pipeline 程式，確實就是實際送入 ranker 的全部特徵；\texttt{query\_id} 與 \texttt{candidate\_id} 則只是識別欄，不列入訓練。這裡特別值得注意的是 chunk-based features：由於每篇文件最多只切 3 個 4096-token chunks，所以它與表~\ref{tab:length-stats} 的長度統計是連動設計，而不是孤立技巧。
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabularx}{\textwidth}{l>{\raggedright\arraybackslash}X}
+    \toprule
+    Feature Name & Description \\
+    \midrule
+    \texttt{bm25\_score} & BM25 對 query 與 candidate 的 lexical 分數。 \\
+    \texttt{qld\_score} & Query likelihood model 的分數。 \\
+    \texttt{bm25\_ngram\_score} & 使用 n-gram/片語索引計算的 BM25 分數。 \\
+    \texttt{dense\_score} & bi-encoder 的 dense retrieval 相似度分數。 \\
+    \texttt{bm25\_rank} & candidate 在 BM25 排序中的名次。 \\
+    \texttt{dense\_rank} & candidate 在 dense retrieval 排序中的名次。 \\
+    \texttt{query\_length} & query 的 lexical token 數。 \\
+    \texttt{doc\_length} & candidate 的 lexical token 數。 \\
+    \texttt{len\_ratio} & \texttt{query\_length / doc\_length}。 \\
+    \texttt{len\_diff} & \texttt{|query\_length - doc\_length|}。 \\
+    \texttt{query\_citation\_num} & query 中 \texttt{CITATION\_SUPPRESSED} 的數量。 \\
+    \texttt{query\_reference\_num} & query 中 \texttt{REFERENCE\_SUPPRESSED} 的數量。 \\
+    \texttt{query\_fragment\_num} & query 中 \texttt{FRAGMENT\_SUPPRESSED} 的數量。 \\
+    \texttt{doc\_citation\_num} & candidate 中 \texttt{CITATION\_SUPPRESSED} 的數量。 \\
+    \texttt{doc\_reference\_num} & candidate 中 \texttt{REFERENCE\_SUPPRESSED} 的數量。 \\
+    \texttt{doc\_fragment\_num} & candidate 中 \texttt{FRAGMENT\_SUPPRESSED} 的數量。 \\
+    \texttt{query\_citation\_ratio} & query 的 citation placeholder 數量除以 query 長度。 \\
+    \texttt{query\_reference\_ratio} & query 的 reference placeholder 數量除以 query 長度。 \\
+    \texttt{query\_fragment\_ratio} & query 的 fragment placeholder 數量除以 query 長度。 \\
+    \texttt{doc\_citation\_ratio} & candidate 的 citation placeholder 數量除以 candidate 長度。 \\
+    \texttt{doc\_reference\_ratio} & candidate 的 reference placeholder 數量除以 candidate 長度。 \\
+    \texttt{doc\_fragment\_ratio} & candidate 的 fragment placeholder 數量除以 candidate 長度。 \\
+    \texttt{query\_year} & 從 query 判決書抽取出的年份。 \\
+    \texttt{doc\_year} & 從 candidate 判決書抽取出的年份。 \\
+    \texttt{year\_diff} & \texttt{query\_year - doc\_year}；未知年份時設為 0。 \\
+    \texttt{chunk\_sim\_max} & query 與 candidate 的 1--3 個 chunks 間所有成對相似度中的最大值。 \\
+    \texttt{chunk\_sim\_mean} & query 與 candidate 的 1--3 個 chunks 間所有成對相似度的平均值。 \\
+    \texttt{chunk\_sim\_top2\_mean} & query 與 candidate 的 chunk 成對相似度中最高兩個值的平均。 \\
+    \bottomrule
+  \end{tabularx}
+  \caption{本研究 learning-to-rank 實際使用的全部 28 個特徵；\texttt{query\_id} 與 \texttt{candidate\_id} 僅作為識別欄，未進入 ranker 訓練。}
+  \label{tab:ltr-features}
+\end{table*}
+
+在 post-processing 方面，我們已依同一份 raw-scope LightGBM rerank 結果重新執行 cut-off search，並明確以 validation F1 選最佳模式。結果如表~\ref{tab:cutoff-strategies} 所示，三種互斥策略中仍以 \texttt{ratio\_cutoff} 最佳，參數為 \texttt{p=0.99, l=4, h=12}，validation F1 為 0.178258，nDCG@10 為 0.236228，P@5 與 R@5 分別為 0.138653 與 0.235862。值得注意的是，目前的 raw reranked candidates 在進入 cut-off search 前，其年份範圍其實已經在上游 scope filter 中處理過，因此後續的 common legal filter 在 validation 與 test 上額外移除的 scope-violating rows 為 0；真正被固定移除的是與 query 相同的自我文件，validation 為 401 筆，test 為 400 筆。也就是說，這個 post-processing 的主要作用，是確保法理約束一致並找到更適合提交格式的 cut-off 邏輯，而最終官方提交使用的就是 \texttt{ratio\_cutoff} 版本。
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabular}{lcccccccc}
+    \toprule
+    策略 & 最佳參數 & Precision & Recall & F1 & nDCG@10 & P@5 & R@5 & 平均保留件數 \\
+    \midrule
+    fixed\_topk & $k=8$ & 0.119389 & 0.240276 & 0.159517 & 0.251517 & 0.143142 & 0.245197 & 8.00 \\
+    largest\_gap\_cutoff & $N=12,\ buffer=0,\ l=1,\ h=10$ & 0.139634 & 0.205772 & 0.166371 & 0.229076 & 0.129676 & 0.220818 & 5.86 \\
+    ratio\_cutoff & $p=0.99,\ l=4,\ h=12$ & 0.148598 & 0.222710 & 0.178258 & 0.236228 & 0.138653 & 0.235862 & 5.96 \\
+    \bottomrule
+  \end{tabular}
+  \caption{COLIEE 2026 validation 上三種 cut-off 策略的最佳參數與績效。此表的 precision / recall / F1 來自變動長度 cut-off 後的整體提交集合；nDCG@10、P@5、R@5 則反映 query-level ranking 品質。}
+  \label{tab:cutoff-strategies}
+\end{table*}
+
+表~\ref{tab:ltr-pipeline-progression} 則改成呈現 ``dense retrieval $\rightarrow$ LTR $\rightarrow$ cut-off'' 的流程型比較，但欄位名稱不再寫成 F1@5 / Precision@5 / Recall@5，因為最後三列的 cut-off 本來就不是固定 top-5，而是變動長度的最終 candidate 集合。這裡要特別說明：目前的 LTR 優化目標是 LambdaRank / NDCG，而不是直接優化 F1@5，所以 raw rerank 後的 top-5 不一定會比單純 dense retrieval 的 top-5 更高；LTR 的好處更常出現在後段的 cut-off search，也就是最後不再硬性固定 top-5，而是讓每個 query 保留更合適的候選數量。具體而言，前三列仍是 fixed top-5 micro 指標：\texttt{ModernBERT + DAP + SFT (cos)} 保留與表~\ref{tab:main-results-valid} 相同的 COLIEE 2026 valid top-5 參考值 0.164982 / 0.150623 / 0.182367；加入 LTR 特徵融合後，validation top-5 為 0.159489 / 0.143142 / 0.180050；而 ``+ Filtering by trial year'' 與前一列相同，因為 validation rerank 輸入在上游就已符合 year scope，沒有額外的 scope-violating 候選可再刪除。最後三列則是三種互斥的 cut-off 選項：\texttt{fixed\_topk}（$k=8$）為 0.159517 / 0.119389 / 0.240276，\texttt{largest\_gap\_cutoff}（$N=12, buffer=0, l=1, h=10$）提升到 0.166371 / 0.139634 / 0.205772，而 \texttt{ratio\_cutoff}（$p=0.99, l=4, h=12$）以 0.178258 / 0.148598 / 0.222710 最佳，也是最終比賽提交所使用的版本。也就是說，若只看 validation top-5，raw LTR 本身並沒有超過 standalone dense baseline；真正的收益主要來自後段的 cut-off search 與最終提交格式。
+
+\begin{table}[t]
+  \centering
+  \small
+  \begin{tabular}{lccc}
+    \toprule
+    model & F1 & Precision & Recall \\
+    \midrule
+    ModernBERT + DAP + SFT (top5) & 0.164982 & 0.150623 & 0.182367 \\
+    + Ensemble (top5) & 0.159489 & 0.143142 & 0.180050 \\
+    + Filtering by trial year (top5) & 0.159489 & 0.143142 & 0.180050 \\
+    + fixed\_topk ($k=8$) & 0.159517 & 0.119389 & 0.240276 \\
+    or + largest\_gap\_cutoff ($N=12,\ buffer=0,\ l=1,\ h=10$) & 0.166371 & 0.139634 & 0.205772 \\
+    or + ratio\_cutoff ($p=0.99,\ l=4,\ h=12$) & 0.178258 & 0.148598 & 0.222710 \\
+    \bottomrule
+  \end{tabular}
+  \caption{COLIEE 2026 valid 上，dense retrieval、LTR 與 post-processing 的流程型比較。前三列是 fixed top-5 micro 指標；最後三列是套用在同一份 LTR 輸出上的三種互斥 cut-off 選項，因此其 F1 / Precision / Recall 對應的是變動長度的最終 candidate 集合，而非固定 top-5。最終 official submission 使用 \texttt{ratio\_cutoff}。}
+  \label{tab:ltr-pipeline-progression}
+\end{table}
+
+根據官方 Task~1 結果頁 \cite{coliee2026task1results}，本研究的最終提交 \texttt{task1\_flnlpltr} 取得 0.2935 的 F1，優於純 dense retrieval 的 \texttt{task1\_flnlpembed}（0.2709）與純 BM25 的 \texttt{task1\_flnlpbm25}（0.2496），最終於 22 隊中排名第 7。表~\ref{tab:official-ranking} 則整理出每一隊的最佳提交成績，顯示 learning-to-rank 雖然只是後段小幅融合，仍確實把本研究從 dense-only 系統再往前推進一步。
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabular}{rllccc}
+    \toprule
+    Rank & Team & Best Run & F1 & Precision & Recall \\
+    \midrule
+    1 & NOWJ & \texttt{submission\_2} & 0.4220 & 0.4235 & 0.4206 \\
+    2 & JNLP & \texttt{random\_forest} & 0.4126 & 0.4341 & 0.3931 \\
+    3 & SIL & \texttt{submission\_sil2} & 0.3871 & 0.4186 & 0.3600 \\
+    4 & mezza & \texttt{task\_1\_mezzanino} & 0.3289 & 0.3161 & 0.3429 \\
+    5 & INTIT & \texttt{3.intit\_bm25\_year} & 0.3165 & 0.3249 & 0.3086 \\
+    6 & DU & \texttt{du3} & 0.3141 & 0.2945 & 0.3366 \\
+    7 & FLNLP & \texttt{task1\_flnlpltr} & 0.2935 & 0.2619 & 0.3337 \\
+    8 & UA & \texttt{ua\_run3} & 0.2666 & 0.2038 & 0.3851 \\
+    9 & UCD-CS & \texttt{ucdcs3} & 0.2645 & 0.2480 & 0.2834 \\
+    10 & JUNLLP & \texttt{task1\_run2\_results} & 0.2525 & 0.2193 & 0.2977 \\
+    11 & 74688 & \texttt{task-1-ualbany} & 0.2346 & 0.2130 & 0.2611 \\
+    12 & UB2026 & \texttt{run1} & 0.2233 & 0.2338 & 0.2137 \\
+    13 & Sach & \texttt{sach\_task1\_run2} & 0.2231 & 0.1631 & 0.3531 \\
+    14 & BJPWH & \texttt{bjpwh3} & 0.2101 & 0.1510 & 0.3451 \\
+    15 & ABAI & \texttt{run2recall} & 0.1771 & 0.1596 & 0.1989 \\
+    16 & AIIRLab & \texttt{task1\_aiirqwen} & 0.1516 & 0.2642 & 0.1063 \\
+    17 & bosch & \texttt{bosch\_task1\_run} & 0.1466 & 0.0892 & 0.4103 \\
+    18 & KeioAndrewShin & \texttt{task1\_submission\_v9} & 0.1383 & 0.1527 & 0.1263 \\
+    19 & CityUMO & \texttt{task1\_submission} & 0.0000 & 0.0000 & 0.0000 \\
+    20 & ClaUSurf & \texttt{task1\_clsmhc13f} & 0.0000 & 0.0000 & 0.0000 \\
+    21 & NIT26 & \texttt{task1\_run1} & 0.0000 & 0.0000 & 0.0000 \\
+    22 & NRCBMU & \texttt{hyb1sailbge} & 0.0000 & 0.0000 & 0.0000 \\
+    \bottomrule
+  \end{tabular}
+  \caption{COLIEE 2026 Task~1 官方結果中，各隊最佳提交成績整理 \cite{coliee2026task1results}。}
+  \label{tab:official-ranking}
+\end{table*}
+
+\subsection{對 THUIR@COLIEE 2023 驗證數值的再解讀}
+
+最後，我們也想補上一個對 THUIR@COLIEE 2023 驗證數值的再解讀。這部分不是已被證實的事實，而是一個必須明確標記為推測的觀察：THUIR 論文中的 ``validation'' 數值可能偏高，原因之一是其 split protocol 與後續 COLIEE 年份的 train/valid 習慣並不完全可比。若把一部分較容易的訓練查詢也混入 validation 風格的評估中，最終數字就可能接近 ``train 表現'' 與 ``真正 held-out valid 表現'' 的中間值。
+
+舉例來說，若某設定在訓練查詢上的 F1 約為 0.16，而在真正 held-out valid 上約為 0.12，兩者的中間值大約就是 0.14；這個量級與 THUIR Table~3 中 SAILER 0.1385、BM25 unlimited 0.1541 的範圍相當接近。這並不等於 THUIR 的數字一定錯誤，而是提醒我們：在比較跨年份、跨 split 的 legal retrieval 結果時，validation protocol 本身就可能是影響觀察結論的重要變數。

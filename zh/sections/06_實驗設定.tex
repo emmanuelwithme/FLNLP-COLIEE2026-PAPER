@@ -1,0 +1,66 @@
+\section{實驗設定}
+
+\subsection{評估指標}
+
+本研究沿用 COLIEE Task~1 常見做法，以 top-5 排名結果計算 micro-average F1、precision 與 recall，並以 F1 作為主要指標。若 $R_k(q)$ 表示 query $q$ 的前 $k$ 個預測、$G(q)$ 表示其真實相關文件集合，則整體 micro 指標可寫為
+\begin{equation}
+P@k=
+\frac{\sum_q |R_k(q)\cap G(q)|}
+{\sum_q |R_k(q)|},
+\quad
+R@k=
+\frac{\sum_q |R_k(q)\cap G(q)|}
+{\sum_q |G(q)|},
+\end{equation}
+\begin{equation}
+F1@k=\frac{2 \cdot P@k \cdot R@k}{P@k+R@k}.
+\end{equation}
+對於同一模型，我們同時輸出 dot product 與 cosine similarity 的排序結果，再比較何者較佳。Dense retrieval 模型 checkpoint 的選擇以驗證集上的 \texttt{eval\_global\_f1} 為主；LTR 模型則以 validation 上的 NDCG 與 early stopping 結果選出最佳 ranker。
+
+\subsection{資料切分與比較原則}
+
+COLIEE 2025 主要用於分析訓練失敗與方法修正，COLIEE 2026 則作為最終主要報告資料。針對 \texttt{processed} 與 \texttt{processed\_new} 的 query 比較，為了公平起見，所有候選文件均固定使用 \texttt{processed} 的 candidate embeddings，只有 query 表示會在兩者之間切換。這樣可以避免 query 與 candidate 同時改動，導致無法判斷真正造成差異的因素。
+
+\subsection{模型與訓練超參數}
+
+最終最佳模型使用 ModernBERT-base 為 encoder，先在美國判決書上做 DAP，再於 COLIEE Task~1 上進行對比式 SFT。主要超參數整理於表~\ref{tab:train-hparams}。後續的 post-processing 則在 validation 上以擴大的 grid search 搜尋固定 top-$k$、ratio cut-off 與 largest-gap cut-off 三種策略的最佳參數，最後再把最佳模式套用到測試集提交檔。
+
+\begin{table*}[t]
+  \centering
+  \scriptsize
+  \begin{tabular}{lll}
+    \toprule
+    模組 & 超參數 & 數值 \\
+    \midrule
+    DAP & 語料 & 美國判決書語料 \\
+    DAP & 目標 & Masked language modeling \\
+    DAP & 訓練時間 & 約 60 小時（0.384 epoch） \\
+    Dense / SFT & Backbone encoder & ModernBERT-base \\
+    Dense / SFT & 最大長度 & 4096 tokens \\
+    Dense / SFT & query:positive:negatives & 1:1:15 \\
+    Dense / SFT & retrieval batch size & 8 \\
+    Dense / SFT & per-device train batch size & 1 \\
+    Dense / SFT & gradient accumulation & 4 \\
+    Dense / SFT & learning rate & $5\times10^{-6}$ \\
+    Dense / SFT & temperature learning rate & $5\times10^{-4}$ \\
+    Dense / SFT & epochs & 20 \\
+    Dense / SFT & warmup ratio & 0.1 \\
+    Dense / SFT & optimizer & AdamW fused \\
+    Dense / SFT & precision & fp16 \\
+    LTR & objective & lambdarank \\
+    LTR & metric & ndcg \\
+    LTR & n\_estimators & 600 \\
+    LTR & learning rate & 0.05 \\
+    LTR & num\_leaves & 63 \\
+    LTR & subsample & 0.8 \\
+    LTR & colsample\_bytree & 0.8 \\
+    LTR & early stopping & 50 rounds \\
+    \bottomrule
+  \end{tabular}
+  \caption{本研究主要訓練超參數。}
+  \label{tab:train-hparams}
+\end{table*}
+
+\subsection{硬體環境}
+
+本研究的主要訓練與推論硬體為 NVIDIA RTX 4080 SUPER 16GB。這個條件對方法設計有直接影響：若以 8192 tokens 進行 \texttt{1:1:15} 對比式訓練，會出現 CUDA out-of-memory，因此實驗最終採用 4096 tokens；continued pretraining 與 dense retrieval 推論則透過 fp16 設定改善記憶體使用。美國判決書上的 DAP 在此硬體條件下約需 60 小時，仍只能覆蓋不到半個 epoch。換言之，本研究的最終模型表現，部分反映的是「在單卡 16GB 設定下可穩定訓練的最佳方案」，而非理論上不受資源限制的最優上界。

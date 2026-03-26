@@ -1,0 +1,70 @@
+\section{Method}
+
+Our method does not emerge from a clean design from scratch. It develops through a practical workflow of reproduction, failure, revision, and integration. This section describes the final pipeline: baselines, long-context encoding, contrastive supervised fine-tuning, dynamic negative sampling, domain-adaptive pretraining, scope filtering, learning to rank, and post-processing. For brevity, we refer to continued pretraining on U.S. case law as DAP (domain-adaptive pretraining) and contrastive supervised fine-tuning on COLIEE Task~1 as SFT (supervised fine-tuning).
+
+\subsection{BM25 and SAILER Baselines}
+
+We keep BM25 and SAILER as the main baselines. BM25 represents a strong lexical retrieval baseline; SAILER corresponds to the legal encoder architecture used by THUIR@COLIEE 2023 \cite{li2023thuir}. In our experiments, SAILER is not retrained. We directly use the released model for embedding, similarity scoring, and ranking. This is a relatively favorable setting for SAILER because its original fine-tuning data are not identical to our split.
+
+Our lexical features mainly come from BM25 and query likelihood with Dirichlet smoothing (QLD). For a query $q$ and document $d$, BM25 is
+\begin{equation}
+\mathrm{BM25}(q,d)=\sum_{t \in q}\mathrm{IDF}(t)\cdot
+\frac{f(t,d)(k_1+1)}{f(t,d)+k_1\left(1-b+b\frac{|d|}{\mathrm{avgdl}}\right)},
+\end{equation}
+where $f(t,d)$ is the term frequency of $t$ in $d$, $|d|$ is document length, and $\mathrm{avgdl}$ is the average document length in the corpus. QLD is
+\begin{equation}
+\mathrm{QLD}(q,d)=\sum_{t \in q} c(t,q)\log \frac{c(t,d)+\mu p(t \mid C)}{|d|+\mu},
+\end{equation}
+where $c(t,q)$ and $c(t,d)$ are term counts and $p(t \mid C)$ is the collection language model.
+
+\subsection{Long-Context Encoding with ModernBERT}
+
+To test whether truncation is the key bottleneck, we use \texttt{answerdotai/ModernBERT-base} as the encoder backbone \cite{warner2024modernbert}. ModernBERT natively supports 8192 tokens and is therefore better suited than SAILER for long judgments in principle. In practice, however, contrastive training with one query, one positive, and 15 negatives means that 17 long documents must be encoded in one update step. On a single RTX 4080 SUPER 16GB, this makes 8192-token training infeasible, so all formal experiments use 4096 tokens instead.
+
+For each judgment we use the encoder sentence representation as the dense retrieval embedding and report rankings under both dot product and cosine similarity. When the two are close, we still report both so that the comparison remains transparent.
+
+\subsection{Contrastive SFT and Static Hard Negatives}
+
+We formulate legal case retrieval as a contrastive query--positive--negative learning problem. For each query, labeled relevant cases are treated as positives and other candidates as potential negatives. The basic training ratio is \texttt{1:1:15}: one query, one positive, and 15 negatives. Let the $i$-th training triple contain query $q_i$, positive $p_i$, negative set $\mathcal{N}_i$, similarity function $s(\cdot,\cdot)$, and temperature $\tau$. The contrastive SFT loss is
+\begin{equation}
+\mathcal{L}_i=
+-\log
+\frac{\exp\left(s(q_i,p_i)/\tau\right)}
+{\exp\left(s(q_i,p_i)/\tau\right)+\sum_{n \in \mathcal{N}_i}\exp\left(s(q_i,n)/\tau\right)}.
+\end{equation}
+In our implementation, $s(\cdot,\cdot)$ is either dot product or cosine similarity.
+
+In early experiments, following a THUIR-style setup, we first build a hard-negative pool from BM25 top-100 candidates and then randomly sample 15 negatives per update. Strictly speaking, THUIR does not explicitly state that the implementation is random-15; however, under our multi-epoch setting, repeated resampling makes the practical effect close to exposing the model to the full top-100 lexical neighborhood over time. The advantage of this setup is simplicity; the downside is that negative difficulty is fixed entirely by lexical ranking.
+
+\subsection{Dynamic Negative Sampling}
+
+Our most important methodological change is replacing static hard negatives with dynamic negative sampling. At the beginning of each epoch, we compute the current model's similarity scores for query--candidate pairs and turn these scores into sampling probabilities for negatives. Candidates with higher scores are more likely to be selected as hard negatives because they are more confusing to the current model. If $\mathcal{C}_i$ is the negative pool for query $q_i$ at epoch $e$, then the sampling probability is
+\begin{equation}
+\pi_e(n \mid q_i)=
+\frac{\exp\left(\alpha s_e(q_i,n)\right)}
+{\sum_{m \in \mathcal{C}_i}\exp\left(\alpha s_e(q_i,m)\right)},
+\quad n \in \mathcal{C}_i,
+\end{equation}
+where $s_e$ is the current epoch similarity score and $\alpha$ controls how peaked the distribution is.
+
+The motivation is straightforward: in legal case retrieval, the hardest negatives are not always the candidates with highest BM25 scores. Some are lexically less similar but structurally or semantically closer in legal reasoning. Letting the model select its own currently confusing negatives provides a more stable and task-relevant signal than relying on fixed BM25 neighborhoods.
+
+\subsection{Domain-Adaptive Pretraining}
+
+Beyond task-specific SFT, we first continue pretraining ModernBERT on U.S. case law with masked language modeling. DAP uses the \texttt{common-pile/caselaw\_access\_project\_filtered} corpus so that the encoder can better adapt to long legal sentences, citation patterns, procedural language, and other typical case-law regularities. Because of the current GPU budget, this stage runs for about 60 hours and still covers only 0.384 epoch, so we treat it as an under-saturated but useful adaptation step.
+
+\subsection{Year-Based Scope Filtering}
+
+We apply year-based scope filtering both during training data construction and during inference. The legal intuition is simple: a judge may cite or notice prior cases, but not future ones. For each query, we therefore extract a decision year and restrict positives, negatives, and inference candidates to legally plausible cases.
+
+In the current implementation, the shared \texttt{query\_candidate\_scope} index is built offline and then reused across training and inference. The filtering rule is centered on candidates not being later than the query year, with a conservative one-year slack in the shared index to absorb year extraction noise and date-format irregularities. This design improves both training signal quality and engineering efficiency.
+
+\subsection{Learning to Rank}
+
+Following THUIR's learning-to-rank strategy in WSDM Cup 2023, web search ranking, and NTCIR-16 WWW-4 \cite{chen2023wsdmcup,li2023websearch,yang2023ntcir}, we integrate dense and lexical signals into a final ranking model. For each query--candidate pair we build 28 numeric features, including lexical scores, dense score, ranking positions, length statistics, placeholder statistics, year difference, and aggregated similarities over one to three document chunks. The full list appears in Table~\ref{tab:ltr-features}. These 28 fields are exactly the features used by the current LightGBM ranker; \texttt{query\_id} and \texttt{candidate\_id} are retained only as identifiers and are not used as training features.
+
+The ranking model is \texttt{lightgbm.LGBMRanker} with the \texttt{lambdarank} objective and \texttt{ndcg} evaluation metric. Early stopping is performed on the validation set, and the best validation model is used at test time.
+
+\subsection{Post-processing}
+
+After query-wise reranking, we apply two kinds of post-processing. The first is common legal filtering, including query-specific year-scope filtering and removal of self-documents where the query and candidate are the same case. The second is cut-off search on the validation set. Instead of always keeping the top 5 ranked items, we search over three strategies with a broad grid: fixed top-$k$, ratio cut-off based on the top score, and largest-gap cut-off that truncates at the largest score drop among the top $N$ candidates. The best strategy and hyperparameters are reported later in Table~\ref{tab:cutoff-strategies}.
