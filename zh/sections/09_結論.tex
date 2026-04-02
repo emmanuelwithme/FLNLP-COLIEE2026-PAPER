@@ -1,7 +1,7 @@
 \section{結論}
 
-本研究以 THUIR@COLIEE 2023 的觀察為起點，重新檢視法律判決檢索中的長文本問題、query 表示方式、負樣本設計與後段排序整合。我們發現，若使用整篇判決書作為 query，ModernBERT + DAP + SFT 能在 COLIEE 2026 valid 上取得 0.1650 的 F1@5，優於 BM25 的 0.1499 與 SAILER-cos 的 0.1213；相對地，若改用 reference sentence extraction，兩種神經模型皆會明顯退步。這說明長文本 encoder 的優勢建立在 ``真的讓模型看到足夠全文脈絡'' 的前提上。
+本研究從 THUIR@COLIEE 2023 的觀察出發，重新檢視法律判決檢索中的長文本問題、query 表示方式、負樣本設計與後段排序整合。我們發現，若使用整篇判決書作為 query，ModernBERT + DAP + SFT 在 COLIEE 2026 valid 上可達 0.1650 的 F1@5，高於 BM25 的 0.1499 與 SAILER 的 0.1213；若改用 reference-centered query，兩種神經模型都會明顯退步。這說明長文本 encoder 的優勢，建立在模型確實看見足夠全文脈絡的前提上。
 
-此外，本研究證實長文本 encoder 並不是即插即用的解答。ModernBERT 若未經 SFT 幾乎無法直接應用於法律判決檢索；而若負樣本仍以靜態 BM25 hard negatives 建立，模型甚至會接近隨機猜測。真正讓模型訓練成功的關鍵，在於動態負樣本選取、year-based scope filtering，以及法律領域繼續預訓練的配合。
+本文也證明，長文本 encoder 並不是即插即用的解答。ModernBERT 若未經 SFT 幾乎無法直接用於本任務；而若負樣本仍依賴靜態 BM25 hard negatives，模型甚至會接近隨機猜測。真正讓訓練成功的關鍵，在於對比式學習中的負樣本選取：我們不只改用每個 epoch 依模型分數動態更新的 hard negatives，也為每個 query 建立年份範圍約束，排除法律上不可能被引用的未來判決，讓模型學到真正沒有被法官引用的案例才是負樣本。
 
-最後，本文也說明 dense retrieval 並不是系統的終點。把 lexical、dense、長度、結構、年份與 chunk 訊號交給 LightGBM learning-to-rank，再搭配 post-processing 後，FLNLP 在 COLIEE 2026 Task~1 的官方成績提升到 0.2935，於 22 隊中排名第 7。總結而言，法律判決 dense retrieval 的核心挑戰，不只是選擇更大的模型，而是如何讓模型在有限硬體下有效看見長文本、保留正確的 query 表示，並持續接收具有鑑別力的訓練與排序訊號。
+最後，本文說明 dense retrieval 並不是系統終點。當 lexical、dense、長度、placeholder、年份與 chunk 訊號再交給 LightGBM learning-to-rank，並搭配 cut-off post-processing 後，FLNLP 在 COLIEE 2026 Task~1 的官方成績提升到 0.2935，於 22 隊中排名第 7。總結而言，法律判決 dense retrieval 的核心挑戰，不只是更大的模型，而是如何在有限硬體下保留正確的 query 表示、設計有效的負樣本，並把檢索訊號整合到最終排序中。

@@ -1,2 +1,27 @@
-build/
+# Main paper build outputs
+/build/
+
+# LaTeX intermediate files
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.xdv
+
+# Rendered figure artifacts
+/shared/figures/.build/
+/shared/figures/*.pdf
+/shared/figures/*.png
+/shared/figures/*.svg
+
+# Local scratch files
 paper_dump.txt

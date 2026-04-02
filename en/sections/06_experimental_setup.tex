@@ -17,10 +17,6 @@ F1@k=\frac{2 \cdot P@k \cdot R@k}{P@k+R@k}.
 \end{equation}
 For each dense model we report both dot product and cosine similarity rankings. Dense retrieval checkpoints are selected by validation \texttt{eval\_global\_f1}; LTR models are selected by validation NDCG with early stopping.
 
-\subsection{Data Splits and Comparison Policy}
-
-COLIEE 2025 is used mainly for failure analysis and method revision, while COLIEE 2026 serves as the main reporting benchmark. For the \texttt{processed} vs.\ \texttt{processed\_new} query ablation, all candidate embeddings are fixed to the \texttt{processed} version and only the query side is changed. This prevents the ablation from being confounded by changing queries and candidates at the same time.
-
 \subsection{Models and Hyperparameters}
 
 Our best model uses ModernBERT-base as the backbone encoder, first performs DAP on U.S. case law, and then runs contrastive SFT on COLIEE Task~1. The main training settings are summarized in Table~\ref{tab:train-hparams}. Post-processing uses a broad validation-time grid search over fixed top-$k$, ratio cut-off, and largest-gap cut-off, and then applies the best strategy to the final submission.
@@ -35,14 +31,16 @@ Our best model uses ModernBERT-base as the backbone encoder, first performs DAP 
     DAP & Corpus & U.S. case law corpus \\
     DAP & Objective & Masked language modeling \\
     DAP & Training time & About 60 hours (0.384 epoch) \\
+    DAP & Precision & bf16 \\
     Dense / SFT & Backbone encoder & ModernBERT-base \\
     Dense / SFT & Max length & 4096 tokens \\
-    Dense / SFT & query:positive:negatives & 1:1:15 \\
+    Dense / SFT & Contrastive sample composition & 1 query + 1 noticed + 15 negatives \\
     Dense / SFT & retrieval batch size & 8 \\
     Dense / SFT & per-device train batch size & 1 \\
     Dense / SFT & gradient accumulation & 4 \\
     Dense / SFT & learning rate & $5\times10^{-6}$ \\
     Dense / SFT & temperature learning rate & $5\times10^{-4}$ \\
+    Dense / SFT & dynamic negative softmax $\alpha$ & 1.0 \\
     Dense / SFT & epochs & 20 \\
     Dense / SFT & warmup ratio & 0.1 \\
     Dense / SFT & optimizer & AdamW fused \\
@@ -63,4 +61,4 @@ Our best model uses ModernBERT-base as the backbone encoder, first performs DAP 
 
 \subsection{Hardware}
 
-All major training and inference experiments are performed on a single NVIDIA RTX 4080 SUPER 16GB. This hardware budget directly shapes the method. Running 8192-token contrastive training with \texttt{1:1:15} causes CUDA out-of-memory, so the final system uses 4096 tokens. The DAP stage on U.S. case law also remains incomplete after roughly 60 hours, reaching only 0.384 epoch. Therefore, the final results should be understood as the best stable system under a single 16GB GPU, not as a hardware-unconstrained upper bound.
+All major training and inference experiments are performed on a single NVIDIA RTX 4080 SUPER 16GB. This hardware budget directly shapes the method. Running 8192-token contrastive training with one query, one noticed case, and 15 negatives causes CUDA out-of-memory, so the final system uses 4096 tokens. Continued pretraining uses bf16, while dense retrieval fine-tuning and inference mainly use fp16 to improve memory usage. The DAP stage on U.S. case law also remains incomplete after roughly 60 hours, reaching only 0.384 epoch. Therefore, the final results should be understood as the best stable system under a single 16GB GPU, not as a hardware-unconstrained upper bound.

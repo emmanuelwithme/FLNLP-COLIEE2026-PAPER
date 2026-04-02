@@ -1,0 +1,85 @@
+\documentclass[tikz,border=8pt]{standalone}
+
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,backgrounds,calc,fit,positioning}
+
+\setmainfont{Linux Libertine O}
+\setsansfont{TeX Gyre Heros}
+\setmonofont{Latin Modern Mono}
+\setCJKmainfont{Noto Serif CJK TC}
+\setCJKsansfont{Noto Serif CJK TC}
+\renewcommand{\familydefault}{\rmdefault}
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\pagestyle{empty}
+
+\newcommand{\SharedLaneTitle}{訓練/驗證前處理}
+\newcommand{\TrainingLaneTitle}{訓練階段}
+\newcommand{\InferenceLaneTitle}{測試與輸出}
+\newcommand{\LegendBoxTitle}{圖示}
+\newcommand{\LegendDataLabel}{資料}
+\newcommand{\LegendProcessLabel}{處理}
+\newcommand{\LegendModelLabel}{模型}
+\newcommand{\LegendOutputLabel}{輸出/後處理}
+\newcommand{\LegendMainFlowLabel}{主流程}
+\newcommand{\LegendReuseLabel}{重用依賴}
+\newcommand{\LegendReuseNote}{灰字 = 沿用}
+\newcommand{\ReusePrefix}{沿用：}
+\newcommand{\EpochLoopLabel}{每個 epoch 重複}
+
+\newcommand{\LegendTitle}{讀圖方式}
+\newcommand{\LegendBody}{實線是主流程。\\灰字表示沿用前面成果。}
+
+\newcommand{\RawDataTitle}{原始訓練案例\\與標註}
+\newcommand{\RawDataSub}{輸入：訓練判決檔案和 noticed-case 標註。}
+
+\newcommand{\PreprocessTitle}{整理文本}
+\newcommand{\PreprocessSub}{輸出：清理後文本。}
+
+\newcommand{\SplitAssetsTitle}{切 train/valid\\標註}
+\newcommand{\SplitAssetsSub}{輸出：train/valid 標註切分與 valid query IDs。}
+
+\newcommand{\IndexScopeTitle}{建 train-valid\\BM25 與範圍}
+\newcommand{\IndexScopeSub}{輸出：train\_qid、BM25 query/index/ranking 和候選範圍。}
+
+\newcommand{\BackboneTitle}{ModernBERT\\backbone}
+\newcommand{\BackboneSub}{從 base encoder 或法律 DAP checkpoint 開始。}
+
+\newcommand{\HardNegTitle}{BM25 負樣本池}
+\newcommand{\HardNegSub}{先替每個 train-valid query 找 BM25 top-100 負樣本。\ReuseHint{BM25 排名}}
+
+\newcommand{\DynamicNegTitle}{動態挑負樣本}
+\newcommand{\DynamicNegSub}{每個 epoch 依目前 dense 分數重抽 15 個 negatives。}
+
+\newcommand{\SFTTitle}{對比式 SFT 與\\dense encoder}
+\newcommand{\SFTSub}{輸入：query、positive、15 negatives。\\輸出：已訓練 dense encoder。}
+
+\newcommand{\LTRTrainTitle}{訓練 LTR\\reranker}
+\newcommand{\LTRTrainSub}{每個 pair 建 28 個特徵，用 train-valid 訓練 LightGBM LambdaRank。}
+
+\newcommand{\InferenceInputTitle}{準備測試\\資料}
+\newcommand{\InferenceInputSub}{整理測試文本，建立 test qids、BM25 輸入/索引和年份範圍。}
+
+\newcommand{\LexicalTitle}{先做 lexical\\打分}
+\newcommand{\LexicalSub}{在 test 範圍內算 BM25、QLD 分數和排名。\ReuseHint{test BM25 / scope}}
+
+\newcommand{\DenseTitle}{再做 dense\\打分}
+\newcommand{\DenseSub}{把 query-candidate 編碼成 embeddings，再算 dense 相似度。\ReuseHint{已訓練 encoder}}
+
+\newcommand{\FeatureMergeTitle}{LTR 重排}
+\newcommand{\FeatureMergeSub}{同樣建 28 個特徵，整合 lexical 和 dense 後重排。\ReuseHint{最佳 LTR 模型}}
+
+\newcommand{\RerankTitle}{套用最佳\\LightGBM reranker}
+\newcommand{\RerankSub}{使用訓練好的 LambdaRank 模型，對每個 query 的候選重新排序。}
+
+\newcommand{\PostTitle}{後處理與\\最後輸出}
+\newcommand{\PostSub}{移除自己、選 cutoff，輸出最後答案。}
+
+\input{task1_system_pipeline_common.tex}
+
+\begin{document}
+\TaskOneSystemPipelineFigure
+\end{document}

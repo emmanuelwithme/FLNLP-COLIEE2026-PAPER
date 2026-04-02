@@ -1,23 +1,40 @@
 \section{任務與資料}
 
-本研究以 COLIEE 2026 Task~1 為最終主要評估資料，並以 COLIEE 2025 作為方法探索與失敗實驗分析的輔助資料。Task~1 的目標是：給定一篇查詢判決書，從候選判決書庫中找出最相關的既有案例，並以 top-$k$ 排名方式評估。
+本研究以 COLIEE 2026 Task~1 為主要評估資料，並以 COLIEE 2025 作為方法探索與失敗分析的輔助資料。Task~1 的目標不是找出一般語義上相似的案例，而是對每個 query case 找出其 noticed cases。若某案例曾被 query case 引用（referenced），則視為該 query 的 noticed case。由於官方已將案例內文中的引用資訊移除（redacted），系統必須根據案件事實、推理與法律語意，自動推斷哪些既有案例最可能支撐該判決。
 
 \subsection{資料來源與切分}
 
-在目前的實作設定中，COLIEE 2026 的判決書庫共有 7,708 篇文件，並以既有標註再切分為 1,600 個 train queries 與 401 個 valid queries。模型訓練與參數選擇主要根據 train/valid 切分進行，最終分析則報告 2026 valid 與 2026 train 的 top-5 micro-average F1、precision 與 recall；其中 2025 資料主要用來展示訓練失敗、動態負樣本修正，以及 scope filtering 的早期效果。
+資料來源為加拿大聯邦法院（Federal Court of Canada）判例。訓練資料提供 query cases、整體 candidate pool，以及每個 query 對應的 noticed cases 標註；測試資料只提供 query cases，系統必須自動預測 noticed cases。也就是說，整個流程從查詢、檢索、排序到輸出結果，都必須完全自動化完成。
+
+表~\ref{tab:dataset-stats} 彙整了各年度資料的 query 數量、依年份區分的 candidate pool 規模，以及每個 query 平均 noticed cases 數。COLIEE 2025 只有 train 與 valid 標註，而 COLIEE 2026 另外提供 test 標註。 在目前的實作設定中，COLIEE 2026 的判決書庫共有 7,708 篇文件，並以既有標註再切分為 1,600 個 train queries 與 401 個 valid queries。模型訓練與參數選擇主要根據這個 train/valid split 進行，最終分析則報告 2026 valid 與 2026 train 的 top-5 micro-average F1、precision 與 recall。COLIEE 2025 則主要用來展示訓練失敗、動態負樣本修正，以及 scope filtering 的早期效果。
+
+\begin{table*}[t]
+\caption{COLIEE Task~1 資料統計。candidate 數量以各年度的 \texttt{processed} 判決書庫計算。}
+\label{tab:dataset-stats}
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lccccc}
+\toprule
+ & \multicolumn{2}{c}{COLIEE 2025} & \multicolumn{3}{c}{COLIEE 2026} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-6}
+Statistic & Train & Valid & Train & Valid & Test \\
+\midrule
+\# of query cases & 1,341 & 336 & 1,600 & 401 & 400 \\
+\# of candidate cases & 7,349 & 7,349 & 7,708 & 7,708 & 7,708 \\
+Avg. \# of noticed cases per query & 4.07 & 4.24 & 4.12 & 4.13 & 4.38 \\
+\bottomrule
+\end{tabular}
+\end{table*}
 
 \subsection{\texttt{processed} 與 \texttt{processed\_new}}
 
-本研究特別比較兩種 query 表示方式。第一種是 \texttt{processed}，即以前處理後的整篇判決書作為 query 與 candidate；第二種是 \texttt{processed\_new}，其設計延續 THUIR 的 reference sentence extraction 思路，只保留 \texttt{FRAGMENT\_SUPPRESSED}、\texttt{REFERENCE\_SUPPRESSED}、\texttt{CITATION\_SUPPRESSED} 等佔位符附近的上下文句子，若長度過短則再以前處理文本補足。THUIR 的設定將此做法視為能強化引用區域的 query 視角；本研究則將其作為一個必須重新驗證的假設，而非直接接受。為了公平比較，本研究在 \texttt{processed} 與 \texttt{processed\_new} 的 ablation 中，固定候選文件皆使用 \texttt{processed} embeddings，僅切換 query 的表示方式。
+本文比較兩種 query 表示。第一種是 \texttt{processed}，即以前處理後的整篇判決書作為 query 與 candidate。第二種是 \texttt{processed\_new}，延續 THUIR 的 reference sentence extraction 思路，只保留 citation-redaction placeholders 附近的局部上下文，若長度不足則再以前處理全文前段補足。本文將它視為一個必須重新驗證的 query 假設，而不是直接接受。為了公平比較，在 \texttt{processed} 與 \texttt{processed\_new} 的 ablation 中，候選文件一律固定使用 \texttt{processed} embeddings，僅切換 query 表示。
 
-\texttt{processed} 的產生流程來自 \texttt{process.py}。程式會先從原始判決書中定位第一個段落標記 \texttt{[1]} 之後的正文，移除開頭連續空行與 fragment-only 行，然後做行級合併，將被換行打斷但尚未形成完整句號的文字接回前一句。接著，系統會去除 \texttt{FRAGMENT\_SUPPRESSED} 等 suppression placeholders 的表面字串、腳註式編號、\texttt{[translation]}、\texttt{[sic]}、\texttt{[DATE\_SUPPRESSED]} 等編輯性標記，並以語言偵測過濾法文段落，只保留英文內容。若文件正文沒有內嵌摘要，且 \texttt{summary.py} 事先從原始檔成功擷取到摘要，該摘要會被加到文件前端。最終得到的是「保留全文語意、去除噪訊標記」的整篇判決書版本。
+\texttt{processed} 由 \texttt{process.py} 產生，主要保留整篇判決書正文，同時移除 \texttt{FRAGMENT\_SUPPRESSED} 等 suppression placeholders 的表面字串、\texttt{[translation]}、\texttt{[sic]}、\texttt{[End of document]} 等編輯性標記，以及語言偵測為法文的段落。若清理後正文仍不含 \texttt{Summary:}，且同名摘要檔已由 \texttt{summary.py} 從原始檔中擷取成功，\texttt{process.py} 才會將該摘要前置補入；換言之，\texttt{summary.py} 並不會生成新摘要，而只是抽取原始檔裡原本就存在的 \texttt{Summary:} 區塊。 \texttt{processed\_new} 由 \texttt{reference.py} 產生，先從原始判決書擷取 citation-redaction placeholders 附近的句子與相鄰上下文，再套用與 \texttt{processed} 類似的清理流程；若結果仍短於 512 個英文 word tokens，則以前處理全文前段補長。因此，\texttt{processed\_new} 並不是純粹的引用片段，而是「以引用上下文為核心、必要時由全文前段補長」的 query 版本。
 
-\texttt{processed\_new} 的產生流程則來自 \texttt{reference.py}。系統先以句子切分原始判決書，只擷取包含 \texttt{FRAGMENT\_SUPPRESSED}、\texttt{REFERENCE\_SUPPRESSED} 或 \texttt{CITATION\_SUPPRESSED} 的句子，以及它前一句或後一句作為局部上下文：若 placeholder 出現在句子前半部，就保留前一句與當前句；若出現在句子後半部，就保留當前句與後一句。之後它會套用與 \texttt{processed} 幾乎相同的清理與語言過濾流程。最後，若擷取出的文字不足 512 個英文 word tokens，程式會再從 \texttt{processed} 版本的前段句子往前補，直到接近 512 為止。因此，\texttt{processed\_new} 不是純粹的引用片段，而是「以引用上下文為核心、必要時由整篇文本前段補長」的 query 版本。
+\subsection{長文本特性與法律領域繼續預訓練資料}
 
-\subsection{長文本特性}
+如表~\ref{tab:length-stats} 所示，COLIEE 2026 的 \texttt{processed} 文件具有明顯長文本特性，且已有 94.80\% 的文件短於 12,288 tokens，因此以 3 個 4096-token chunks 近似整篇文件是合理設計。
 
-如表~\ref{tab:length-stats} 所示，COLIEE 2026 的 \texttt{processed} 文件具有明顯長文本特性。更重要的是，已有 94.80\% 的文件短於 12,288 tokens，這使得後續 learning-to-rank 以 3 個 4096-token chunks 近似整篇文件成為合理設計：大多數案件可以在不額外提高 encoder 上限的情況下，被 chunk-based reranking 幾乎完整覆蓋。
-
-\subsection{法律領域繼續預訓練資料}
-
-除了 COLIEE 官方資料外，本研究亦使用 Hugging Face 上的 \texttt{common-pile/caselaw\_access\_project\_filtered} 作為繼續預訓練語料，其連結為 \url{https://huggingface.co/datasets/common-pile/caselaw_access_project_filtered}。該資料包含 6,735,525 篇美國判決書，時間跨度約 365 年。這個額外語料並不直接提供 COLIEE 監督訊號，而是用來讓 ModernBERT 在進入對比式 fine-tuning 前，先學到更接近法律文本分布的 encoder 表徵。受限於單張 RTX 4080 SUPER 16GB 與訓練時間成本，這個 masked language modeling continued pretraining 約訓練 60 小時後，仍只覆蓋不到半個 epoch，因此本文將其視為「有用但尚未完全釋放潛力」的 domain adaptation 步驟。
+除了 COLIEE 官方資料外，本文亦使用 Hugging Face 上的 Common Pile CaseLaw Access Project subset\footnote{\url{https://huggingface.co/datasets/common-pile/caselaw_access_project_filtered}} 作為法律領域 continued pretraining 語料。該資料包含 6,735,525 篇美國判決書，時間跨度約 365 年。這個語料不直接提供 COLIEE 監督訊號，而是用來讓 ModernBERT 在對比式 fine-tuning 前先適應法律文本分布。受限於單張 RTX 4080 SUPER 16GB 與訓練時間成本，這個 masked language modeling 階段約訓練 60 小時後，仍只覆蓋 0.384 epoch，因此本文將其視為「有用但尚未飽和」的 domain adaptation 步驟。

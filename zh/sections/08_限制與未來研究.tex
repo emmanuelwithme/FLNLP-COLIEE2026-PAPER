@@ -1,11 +1,9 @@
 \section{限制與未來研究}
 
-本研究首先受限於硬體條件。雖然 ModernBERT 原生支援 8192 tokens，但在 \texttt{query:positive:negatives=1:1:15} 的對比式學習配置下，單張 RTX 4080 SUPER 16GB 無法穩定訓練 8192-token 版本，因此本研究最終採用 4096 tokens。這意味著目前結果仍未完全驗證「真正的 8192-token 對比式法律檢索」是否能帶來更大提升。未來若能使用更大顯存的 GPU、分散式訓練、gradient checkpointing 或更高效的 chunking/aggregation 設計，將能更完整檢驗長文本假設。
+本研究首先受限於硬體條件。雖然 ModernBERT 原生支援 8192 tokens，但在每個對比式樣本包含 1 篇 query case、1 篇 noticed case 與 15 篇負樣本的設定下，單張 RTX 4080 SUPER 16GB 無法穩定訓練 8192-token 版本，因此正式實驗採用 4096 tokens。這意味著本文仍未完全回答「真正的 8192-token 法律 dense retrieval」是否能帶來更大提升；但從文件長度分布推測，若能以 8192 tokens 訓練 ModernBERT，績效應仍有進一步上升空間，因為 COLIEE 2026 中可被完整覆蓋的判決書比例會由 56.11\% 提升到 87.69\%，等於多覆蓋 31.58 個百分點、也就是多 2,434 篇判決書。
 
-第二，法律領域 continued pretraining 目前僅訓練約 60 小時，仍只覆蓋不到半個 epoch，尚未完整看過全部 6,735,525 篇美國判決書，因此其潛力很可能尚未完全釋放。未來可延長 DAP 步數，或比較美國、加拿大與混合法域語料對 COLIEE 表現的影響。
+第二，法律領域 continued pretraining 目前僅訓練約 60 小時，仍只覆蓋 0.384 epoch，尚未完整看過全部 6,735,525 篇美國判決書，因此其潛力很可能尚未完全釋放。本文的 DAP 採用 bf16 訓練，但尚未系統性比較 fp16、bf16、fp32 或其他 mixed-precision 設定對 continued pretraining 與下游檢索表現的影響。
 
-第三，雖然本文已經把 LightGBM learning-to-rank 與 cut-off post-processing 納入正式提交流程，並在官方榜單上帶來可觀但有限的提升，但目前的 reranking 仍主要依賴 bi-encoder 產生的特徵與 query-wise tree ranker。未來若能進一步結合 cross-encoder、listwise reranker，或更細緻的 chunk interaction 機制，理論上仍有持續提升空間。
+第三，目前年份抽取仍完全依賴規則式方法：程式會從文本中擷取 1800 至 2026 的四位年份，取最大值作為判決年份，再以 \texttt{candidate\_year <= query\_year + 1} 建立 query-specific candidate scope。這個規則簡單有效，但仍可能受到歷史年份、程序日期或文本清理流程的影響。若主辦單位後續能提供更完整的 metadata，例如判決日期、法域、法院層級、法官與程序類型，candidate scope 與其他結構化特徵都能更精確利用。
 
-第四，本文雖然已驗證 year-based scope filtering 有助於法律檢索，但目前的年份抽取仍主要依賴規則與 metadata/文本模式，未來可以把年份、程序階段與引用關係抽取得更完整，讓候選範圍約束不只限於 ``是否早於 query''，而能進一步納入法域、法院層級與程序類型等法律知識。
-
-最後，從工程角度來看，本研究觀察到 fp16 fine-tuning 比 bf16 更容易收斂，但其真正原因尚未完全釐清。後續可系統性比較不同 precision、learning rate、temperature 與 hard-negative 更新策略，釐清數值穩定性與法律檢索表現之間的關係。
+最後，本文目前的 reranking 仍主要依賴 bi-encoder 與 query-wise tree ranker。未來可進一步比較更完整的 ensemble 方法與目標函數，並納入 cross-encoder、late interaction（如 ColBERT）與更細緻的段落、句子、甚至詞級訊號，檢驗全文 noticed-case supervision 能否讓這些細粒度訊號發揮更大效果。

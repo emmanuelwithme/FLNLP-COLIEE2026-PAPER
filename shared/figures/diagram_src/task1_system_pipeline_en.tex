@@ -1,0 +1,85 @@
+\documentclass[tikz,border=8pt]{standalone}
+
+\usepackage{fontspec}
+\usepackage{xeCJK}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,backgrounds,calc,fit,positioning}
+
+\setmainfont{Linux Libertine O}
+\setsansfont{TeX Gyre Heros}
+\setmonofont{Latin Modern Mono}
+\setCJKmainfont{Noto Serif CJK TC}
+\setCJKsansfont{Noto Serif CJK TC}
+\renewcommand{\familydefault}{\rmdefault}
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\pagestyle{empty}
+
+\newcommand{\SharedLaneTitle}{Train/valid Setup}
+\newcommand{\TrainingLaneTitle}{Training Only}
+\newcommand{\InferenceLaneTitle}{Test-Time Prediction}
+\newcommand{\LegendBoxTitle}{Legend}
+\newcommand{\LegendDataLabel}{Data}
+\newcommand{\LegendProcessLabel}{Process}
+\newcommand{\LegendModelLabel}{Model}
+\newcommand{\LegendOutputLabel}{Output/post-process}
+\newcommand{\LegendMainFlowLabel}{Main flow}
+\newcommand{\LegendReuseLabel}{Reused dependency}
+\newcommand{\LegendReuseNote}{gray text = reused}
+\newcommand{\ReusePrefix}{Reuse: }
+\newcommand{\EpochLoopLabel}{repeat each epoch}
+
+\newcommand{\LegendTitle}{How to read this figure}
+\newcommand{\LegendBody}{Solid arrows are the main flow.\\Gray text marks reused results from earlier steps.}
+
+\newcommand{\RawDataTitle}{Raw train cases\\and labels}
+\newcommand{\RawDataSub}{Input: training case files and noticed-case labels.}
+
+\newcommand{\PreprocessTitle}{Clean the text}
+\newcommand{\PreprocessSub}{Output: cleaned text.}
+
+\newcommand{\SplitAssetsTitle}{Split train/valid\\labels}
+\newcommand{\SplitAssetsSub}{Output: split labels and valid query IDs.}
+
+\newcommand{\IndexScopeTitle}{Build train-valid\\BM25 and scope}
+\newcommand{\IndexScopeSub}{Output: train\_qid, BM25 query/index/ranking, and candidate scope.}
+
+\newcommand{\BackboneTitle}{ModernBERT\\backbone}
+\newcommand{\BackboneSub}{Start from the base encoder or a legal DAP checkpoint.}
+
+\newcommand{\HardNegTitle}{BM25 negative\\pool}
+\newcommand{\HardNegSub}{Get BM25 top-100 negatives for each train-valid query.\ReuseHint{BM25 ranking}}
+
+\newcommand{\DynamicNegTitle}{Pick negatives\\dynamically}
+\newcommand{\DynamicNegSub}{At each epoch, resample 15 negatives from current dense scores.}
+
+\newcommand{\SFTTitle}{Contrastive SFT\\and dense encoder}
+\newcommand{\SFTSub}{Input: query, positive, and 15 negatives.\\Output: trained dense encoder.}
+
+\newcommand{\LTRTrainTitle}{Train the LTR\\reranker}
+\newcommand{\LTRTrainSub}{Build 28 features per pair and train LightGBM LambdaRank on train-valid.}
+
+\newcommand{\InferenceInputTitle}{Prepare test\\assets}
+\newcommand{\InferenceInputSub}{Clean test text and build test qids, BM25 inputs/index, and year scope.}
+
+\newcommand{\LexicalTitle}{Lexical scoring}
+\newcommand{\LexicalSub}{Compute BM25 and QLD scores within the test scope.\ReuseHint{test BM25 / scope}}
+
+\newcommand{\DenseTitle}{Dense scoring}
+\newcommand{\DenseSub}{Encode query-candidate texts into embeddings, then score dense similarity.\ReuseHint{trained encoder}}
+
+\newcommand{\FeatureMergeTitle}{LTR reranking}
+\newcommand{\FeatureMergeSub}{Build the same 28 features from lexical and dense signals, then rerank.\ReuseHint{best LTR model}}
+
+\newcommand{\RerankTitle}{Best LightGBM\\reranker}
+\newcommand{\RerankSub}{Use the trained LambdaRank model to rerank each query's candidates.}
+
+\newcommand{\PostTitle}{Post-process\\and export}
+\newcommand{\PostSub}{Remove self-cases, choose cutoff, and export the final answer.}
+
+\input{task1_system_pipeline_common.tex}
+
+\begin{document}
+\TaskOneSystemPipelineFigure
+\end{document}

@@ -1,5 +1,39 @@
 \begin{abstract}
-Legal case retrieval must simultaneously handle long documents, sparse citation cues, and highly domain-specific language. Table~3 in THUIR@COLIEE 2023 suggests an important clue: when both SAILER and BM25 are restricted to 512 tokens, SAILER outperforms BM25; however, unrestricted BM25 becomes stronger again than truncated SAILER. This observation motivates our central hypothesis that long-text truncation is one of the main reasons why dense retrieval does not consistently outperform lexical retrieval in legal case retrieval. To test this hypothesis, we adopt ModernBERT-base as a long-context encoder, continue pretraining it with masked language modeling on a U.S. case law corpus, and then perform contrastive supervised fine-tuning on COLIEE 2025 and 2026 Task~1.
+Legal case retrieval must handle long documents, sparse citation cues, and highly domain-specific language. Table~\ref{tab:thuir-table3-excerpt}, excerpted from THUIR@COLIEE 2023 \cite{li2023thuir}, shows that when both models are limited to 512 tokens, SAILER outperforms BM25, but when BM25 is allowed to use the full document it becomes stronger again than truncated SAILER. This suggests that long-text truncation may be one of the main reasons dense retrieval still struggles to consistently surpass lexical retrieval in legal case retrieval. To test this hypothesis, we adopt ModernBERT-base as a long-context encoder, continue pretraining it with masked language modeling on a U.S. case-law corpus, and then perform contrastive supervised fine-tuning on COLIEE 2025 and 2026 Task~1.
 
-Our experiments are constrained by a single NVIDIA RTX 4080 SUPER 16GB GPU. Under the \texttt{query:positive:negatives=1:1:15} setting, 8192-token contrastive training causes CUDA out-of-memory, so the final system uses 4096 tokens. The continued pretraining stage is also hardware-limited: after roughly 60 hours of masked language modeling, only 0.384 epoch can be completed. Despite this limitation, the experiments yield four clear findings. First, query representation matters more than expected: on COLIEE 2026 validation, using the whole preprocessed case as query (\texttt{processed}) gives F1@5 of 0.1213 for SAILER and 0.1650 for ModernBERT DAP+SFT, while THUIR-style reference extraction (\texttt{processed\_new}) drops them to 0.1022 and 0.1038. Second, ModernBERT without task-specific fine-tuning is almost unusable for this task; the untuned model reaches only 0.0142 F1@5 on 2026 validation, and DAP-only exploration remains similarly weak. Third, a static BM25 hard-negative design following the general THUIR-style pipeline fails badly: on COLIEE 2025 validation it yields only about 0.00515 F1, close to random guessing. Replacing it with dynamic negative sampling based on current model similarity improves validation performance by more than one order of magnitude. Fourth, after adding year-based scope filtering, LightGBM learning to rank, and post-processing, the final FLNLP submission reaches 0.2935 F1 on COLIEE 2026 Task~1 and ranks 7th among 22 teams. Overall, the study shows that long-context handling, query design, negative sampling, and downstream ranking integration are the four practical factors that determine whether legal dense retrieval succeeds.
+Our experiments are constrained by a single NVIDIA RTX 4080 SUPER 16GB GPU. When each contrastive batch must encode one query case, one noticed case, and 15 unrelated judgments, the final system can use only 4096 tokens, and the continued pretraining stage covers only 0.384 epoch after about 60 hours. Even under this setting, three findings are clear. First, full-document queries are much better than reference-centered queries: on 2026 validation, ModernBERT DAP+SFT rises from 0.1038 to 0.1650 F1@5 when the query representation switches from \texttt{processed\_new} to \texttt{processed}. Second, untuned ModernBERT is almost unusable for this task, and static BM25 hard negatives make training nearly fail; stable convergence requires both dynamic negative sampling and query-specific year scope constraints. Third, after adding scope filtering, LightGBM learning to rank, and post-processing, the final FLNLP submission reaches 0.2935 F1 on COLIEE 2026 Task~1 and ranks 7th among 22 teams. Overall, this study shows that long-context handling, query representation, negative selection, and downstream ranking integration are the practical factors that determine whether legal dense retrieval succeeds. The implementation of our method can be found at \url{https://github.com/emmanuelwithme/FLNLP-COLIEE2026}.
 \end{abstract}
+
+\begin{CCSXML}
+<ccs2012>
+   <concept>
+       <concept_id>10002951.10003317.10003338</concept_id>
+       <concept_desc>Information systems~Retrieval models and ranking</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10002951.10003317.10003338.10003343</concept_id>
+       <concept_desc>Information systems~Learning to rank</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10010147.10010178.10010179</concept_id>
+       <concept_desc>Computing methodologies~Natural language processing</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10002951.10003317.10003338.10003341</concept_id>
+       <concept_desc>Information systems~Language models</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+ </ccs2012>
+\end{CCSXML}
+
+{\sloppy
+\ccsdesc[500]{Information systems~Retrieval models and ranking}
+\ccsdesc[500]{Information systems~Learning to rank}
+\ccsdesc[500]{Computing methodologies~Natural language processing}
+\ccsdesc[500]{Information systems~Language models}
+}
+
+\keywords{legal case retrieval, noticed case retrieval, dense retrieval, contrastive learning, ModernBERT, learning to rank}

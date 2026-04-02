@@ -1,23 +1,23 @@
 \section{相關研究}
 
-本研究主要位於四條研究脈絡的交會處：法律判決檢索、長文本 encoder、對比式 dense retrieval 訓練策略，以及後段 learning-to-rank 融合。
+本研究主要位於四條研究脈絡的交會處：noticed-case retrieval、THUIR 的結構化法律預訓練、檢索互動架構與排序目標，以及長文本 encoder 與動態負樣本設計。
 
-\subsection{法律判決檢索與 COLIEE}
+\subsection{法律判決檢索與 THUIR@COLIEE 2023}
 
-COLIEE Task~1 以判決書對判決書的相關案例檢索為核心，與一般網頁搜尋相比，法律檢索文本更長、語言更正式，且存在大量程序性與引用性內容。THUIR@COLIEE 2023 \cite{li2023thuir} 以 SAILER 為主體，結合 reference sentence extraction、heuristic pre-processing、後處理與 learning-to-rank，取得當年度最佳成績。其方法的重要啟示有二：一是結構知識與引用位置確實對法律文本有幫助；二是 query 應如何表示，可能比模型本身更影響最終結果。本研究延續這條脈絡，但把焦點放在兩個 THUIR 論文沒有完整回答的問題上：reference-centered query 是否仍適合長文本 encoder，以及 dense retrieval 是否主要受限於文本截斷。
+COLIEE Task~1 的重點不是一般的相似案例搜尋，而是要找出真正支撐 query case 判決理由的 noticed cases。THUIR 在 COLIEE 2023 \cite{li2023thuir} 以 SAILER 為核心，結合 reference sentence extraction、post-processing 與 learning-to-rank，取得當年度最佳成績。其最重要的貢獻，是提出結構感知的法律預訓練：將判決書拆成 Fact、Reasoning、Decision 三段，由較深的 encoder 編碼 Fact，再把 `[CLS]` hidden state 注入兩個較淺的 decoders，用來重建被遮罩的 Reasoning 與 Decision。最終訓練目標為三個 masked language modeling loss 的總和，其中 Fact 的遮罩比例較低，Reasoning 與 Decision 較高，目的是讓 encoder 更專注於把案件事實壓縮成可檢索的表徵 \cite{li2023thuir}。本文延續 THUIR 的問題意識，但把焦點轉向兩個更直接的問題：reference-centered query 是否仍適合長文本 encoder，以及 dense retrieval 是否主要受限於截斷。
 
-\subsection{Lexical Retrieval 與 BM25 基線}
+\subsection{檢索互動架構與排序目標}
 
-BM25 是資訊檢索中的經典 lexical baseline \cite{robertson2009bm25}。在法律判決檢索任務中，BM25 的重要性特別高，因為判決書中的關鍵法律概念、案例名稱與程序詞彙往往具有強烈的精確匹配訊號。THUIR 的結果與本研究的初步實驗都顯示，當 dense encoder 受到嚴格長度截斷時，BM25 仍可能優於神經式模型。因此，本研究並未將 BM25 視為低門檻對照，而是視為需要被嚴肅超越的強基線。
+在神經式檢索架構中，dual encoder 會將 query 與 candidate 分別編碼成向量，再以內積或 cosine similarity 計分，因此可以離線預先建立 candidate embeddings，是 dense retrieval 最常見的第一階段架構 \cite{karpukhin2020dpr}。cross encoder 則把 query 與 candidate 串接後一起輸入同一個 Transformer，讓所有 token 直接交互，通常更適合 reranking，但需要對每個 query--candidate pair 個別推論，成本顯著較高 \cite{nogueira2019bertpr}。late interaction 介於兩者之間，例如 ColBERT 先分別編碼 query 與文件 token，再以較便宜的 token-level interaction 聚合相似度，在效果與效率之間取得折衷 \cite{khattab2020colbert}。
+
+這種差異對本研究特別重要。由於 query 與 candidate 都是長篇判決書，若採用 cross encoder，單次 reranking 很容易因 token 數暴增而超出模型上限或造成過高的記憶體成本。因此，本文把 dual encoder 作為第一階段主體，並把 cross encoder 與 late interaction 保留為後續工作。相對地，後段排序則採用 learning-to-rank。pointwise 方法把每個 query--document pair 視為獨立樣本；pairwise 方法學習哪一篇文件應排在另一篇前面，例如 RankNet \cite{burges2005ranknet}；listwise 方法則直接對整個候選排序進行學習，更貼近真實 ranking metric \cite{cao2007listnet,liu2009ltr}。本文的 dual encoder 對比式學習較接近 listwise：雖然 query 與單一文件的相似度是逐對計算，但每一步的 InfoNCE 損失會把 1 個 positive 與 15 個 negatives 放進同一個 softmax 共同正規化，因此優化對象是整個候選集合中的相對排序，而不是彼此獨立的二元 pair。相對地，LightGBM LambdaRank 在更新形式上屬於 pairwise，因為它透過文件對之間的交換來產生梯度；但這些 lambda 的權重又直接來自整體排序對 NDCG 的影響，因此其最終優化目標帶有明顯的 listwise 性質。
 
 \subsection{長文本 Encoder 與 ModernBERT}
 
-ModernBERT \cite{warner2024modernbert} 是近年針對 encoder-only Transformer 所提出的現代化改良模型，兼顧較長上下文、較佳的記憶體效率與較快的推論速度。對本研究而言，它最直接的吸引力在於原生支援 8192 tokens，這使其成為檢驗「長文本是否為法律檢索關鍵瓶頸」的合適工具。然而，長上下文能力並不代表可直接遷移至法律檢索任務，特別是當目標資料高度領域化、且 query 與 candidate 皆為長篇判決書時，仍需要 task-specific supervised fine-tuning 與 domain adaptation。本研究的實驗正是沿著這條脈絡展開：先驗證長文本假設，再追問「長文本能力本身」與「任務特化訓練訊號」究竟各自扮演什麼角色。
+ModernBERT \cite{warner2024modernbert} 是近年對 encoder-only Transformer 的重要改良模型，其設計重點不只是把 context window 拉長，而是同時兼顧記憶體效率與推論速度。它採用 RoPE、pre-norm 與 GeGLU，並移除多數 bias 項；在注意力設計上，交替使用 global attention 與 local sliding-window attention，其中每第三層使用 global attention，其餘層使用 128-token local attention；在實作層則搭配 unpadding、Flash Attention 2/3 與編譯優化，以提升長文本訓練與推論效率 \cite{warner2024modernbert}。對本文而言，ModernBERT 的價值在於它提供了一個可直接檢驗「長文本是否為法律判決 dense retrieval 主要瓶頸」的長上下文 encoder。
 
-\subsection{對比式學習與負樣本選取}
+\subsection{動態負樣本與合法候選範圍}
 
-Dense retrieval 的對比式學習通常仰賴正樣本與負樣本之間的區分難度來形成有效訊號。若負樣本過於容易，模型難以學到可泛化的判別邊界；但若負樣本來源固定且與目前模型狀態脫節，訓練也可能不穩定。本研究一開始依照類似 THUIR@COLIEE 2023 的流程，先以 BM25 top-100 候選建立 hard-negative pool，再在每個訓練步驟中抽取 15 篇負樣本；但在法律判決檢索設定中幾乎無法收斂。這說明 hard negative 並非只要「看起來困難」即可，還需要與當前模型的混淆情形同步更新。基於此，本研究改以每個 epoch 重新計算 query--candidate 相似度，並依此動態調整負樣本抽樣機率，最終成為本研究最關鍵的方法改動。
+Dense retrieval 的對比式學習高度依賴負樣本品質。若負樣本過於容易，模型學不到穩定的判別邊界；若負樣本來源固定，卻又與當前模型狀態脫節，訓練同樣可能失敗。本文早期依照類似 THUIR 的流程，先以 BM25 top-100 建立 hard-negative pool，再在每個步驟抽取 15 篇負樣本，但幾乎無法收斂。這顯示法律判決檢索中的 hard negatives 不能只由 lexical rank 決定，還必須隨模型狀態動態更新。
 
-\subsection{Learning-to-Rank 與後段融合}
-
-除了 bi-encoder 檢索本身之外，THUIR 在 WSDM Cup 2023、網頁搜尋排序與 NTCIR-16 WWW-4 任務上也持續展示了 learning-to-rank 融合的效果 \cite{chen2023wsdmcup,li2023websearch,yang2023ntcir}。這類方法的共同核心是：不要只依賴單一檢索分數，而是把 lexical、dense、長度、結構與後處理訊號一起交給排序器學習。本研究延續此脈絡，但把特徵重新設計為適合法律判決檢索的版本，例如 placeholder 數量、年份差、以及 1--3 個長文本 chunks 的聚合相似度，並以 query-specific 年份範圍過濾與 cut-off search 作為最終 post-processing。
+此外，法律檢索還有一個一般網頁檢索較少遇到的問題：若不限制候選範圍，某些語義相關、但年份晚於 query case 的未來判決，會被誤當成負樣本。這些文件未被標成 noticed case，未必因為它們真的不相關，而可能只是法官在時間上根本不可能引用。因此，本文把動態負樣本選取與 query-specific 年份 scope 結合，讓模型只在法律上合理的候選範圍內學習真正的負樣本。

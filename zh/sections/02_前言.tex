@@ -1,10 +1,10 @@
 \section{前言}
 
-法律判決檢索（legal case retrieval）是法律資訊系統中的核心任務之一。當使用者輸入一篇新案件的判決書時，系統需要從既有判決書庫中找出最相關的先例，以支援法律研究、判決引用與司法決策。COLIEE Task~1 長期以來即以此任務為主軸，並提供標準化資料集與評估方式，使不同方法可以在相同條件下比較。
+法律判決檢索（legal case retrieval）是法律資訊系統中的核心任務之一。在 COLIEE Task~1 中，系統必須對每個查詢案例（query case）自動找出其對應的 noticed cases；若某案例曾被 query case 引用（referenced），則視為該 query 的 noticed case。為了真正測試模型能否從案件事實、推理與法律語意推斷支撐判決的先例，官方已將所有案例內文中的引用資訊移除（redacted）。資料來源為加拿大聯邦法院（Federal Court of Canada）判例，整個流程從輸入 query 到輸出 noticed cases 都必須完全自動化完成。
 
-本研究的起點來自 THUIR@COLIEE 2023 在法律判決檢索任務上的觀察 \cite{li2023thuir}。其 Table~3 顯示，SAILER 在 512-token 截斷條件下優於同樣被截斷的 BM25，但不受最大長度限制的 BM25 又反過來優於 SAILER。這個結果代表，法律檢索中的相對優劣很可能不只來自模型架構本身，而與「模型究竟看到了多少判決書內容」高度相關。
+本研究的起點來自 THUIR@COLIEE 2023 的觀察 \cite{li2023thuir}。根據本研究表~\ref{tab:thuir-table3-excerpt} 節錄的數值 \cite{li2023thuir}，當 SAILER 與 BM25 都被限制為 512 tokens 時，SAILER 優於 BM25；但當 BM25 不受最大長度限制時，又反而高於受截斷的 SAILER。這表示法律檢索中的相對優劣不只取決於模型架構，也取決於模型究竟能看到多少判決全文。
 
-另一方面，COLIEE 2026 的 \texttt{processed} 判決書本身就具有明顯長文本特性。表~\ref{tab:length-stats} 顯示，7,708 篇文件的平均長度為 5,031.36 tokens，中位數為 3,684.5 tokens，其中 56.11\% 短於 4096 tokens、87.69\% 短於 8192 tokens、94.80\% 短於 12,288 tokens。這也直接影響後續 learning-to-rank 的 chunk 設計：若將文件最多切成 3 個 4096-token chunks，便能近乎完整覆蓋絕大多數 \texttt{processed} 判決書。
+COLIEE 2026 本身就是明顯的長文本任務。表~\ref{tab:length-stats} 顯示，7,708 篇 \texttt{processed} 文件的平均長度為 5,031.36 tokens，中位數為 3,684.5 tokens，其中 56.11\% 短於 4096 tokens、87.69\% 短於 8192 tokens、94.80\% 短於 12,288 tokens。這也直接支持後續的 chunk-based reranking 設計：若將每篇文件最多切成 3 個 4096-token chunks，就能在不提高 encoder 上限的情況下，近乎完整覆蓋大多數文件。
 
 \begin{table}[t]
   \centering
@@ -22,11 +22,11 @@
     $<12,288$ tokens & 7,307 (94.80\%) \\
     \bottomrule
   \end{tabular}
-  \caption{COLIEE 2026 \texttt{processed} 文件長度統計。因為本研究的 learning-to-rank 最多使用 3 個 4096-token chunks，所以 12,288 tokens 可視為 chunk-based reranking 的主要覆蓋上限；依此設計，94.80\% 的文件可在 3 chunks 內被完整覆蓋。}
+  \caption{COLIEE 2026 \texttt{processed} 文件長度統計。由於後續 reranking 最多使用 3 個 4096-token chunks，因此 12,288 tokens 可視為 chunk-based reranking 的主要覆蓋上限。}
   \label{tab:length-stats}
 \end{table}
 
-為了更直觀地說明長文本截斷對 dense retrieval 的影響，表~\ref{tab:thuir-table3-excerpt} 節錄了 THUIR@COLIEE 2023 Table~3 的關鍵數值。當最大長度限制為 512 tokens 時，SAILER 的 F1 為 0.1385，高於 BM25 的 0.1012；但當 BM25 不受長度限制時，其 F1 上升到 0.1541，反而高於受截斷的 SAILER。這組數字不能單獨證明「只要長度夠，dense retrieval 一定會贏」，但它確實足以支持本研究的核心假設：長文本截斷，很可能是 dense retrieval 在法律判決檢索中無法穩定超越 lexical retrieval 的主要原因之一。
+表~\ref{tab:thuir-table3-excerpt} 進一步把這個問題說得更具體 \cite{li2023thuir}。當最大長度限制為 512 tokens 時，SAILER 的 F1 為 0.1385，高於 BM25 的 0.1012；但當 BM25 不受長度限制時，其 F1 上升到 0.1541，反而高於受截斷的 SAILER。本文的實驗則更進一步證明，只要把 encoder 的可見上下文拉長到 4096 tokens，dense retrieval 就可以超過不限長度的 BM25：如表~\ref{tab:main-results-valid} 所示，ModernBERT + DAP + SFT 在 2026 valid 上達到 0.1650 F1，高於 BM25 的 0.1499。
 
 \begin{table}[t]
   \centering
@@ -44,8 +44,6 @@
   \label{tab:thuir-table3-excerpt}
 \end{table}
 
-基於上述觀察，本研究選擇原生支援 8192 tokens 的 ModernBERT \cite{warner2024modernbert} 作為長文本 encoder，並進一步在美國判決書上進行 domain-adaptive pretraining。然而，實務上硬體限制立即成為新的瓶頸。在 \texttt{query:positive:negatives=1:1:15} 的對比式學習設定下，若每篇文本皆取 8192 tokens，單張 NVIDIA RTX 4080 SUPER 16GB 會直接發生 CUDA out-of-memory，因此本研究正式實驗改用 4096 tokens；美國判決書上的 masked language modeling continued pretraining 亦約需 60 小時，仍只能覆蓋不到半個 epoch。換言之，本研究既是方法研究，也是受限於單卡 16GB 條件下的工程折衷研究。
+基於上述觀察，本文採用原生支援 8192 tokens 的 ModernBERT \cite{warner2024modernbert} 作為長文本 encoder，並在美國判決書上進行 domain-adaptive pretraining。然而，實務上的主要瓶頸很快轉為硬體限制：若在對比式訓練中每個 batch 同時包含 1 篇 query case、1 篇 noticed case 與 15 篇不相關判決書，8192 tokens 會在單張 NVIDIA RTX 4080 SUPER 16GB 上直接造成 CUDA out-of-memory，因此正式實驗改用 4096 tokens；美國判決書上的 continued pretraining 約需 60 小時，仍只能覆蓋 0.384 epoch。
 
-在實驗推進過程中，我們發現單純換用長文本 encoder 並不足以解決問題。首先，沿用 THUIR 的 reference sentence extraction 建立 query，反而會使檢索表現下降；其次，未經 supervised fine-tuning 的 ModernBERT 幾乎無法直接遷移至本任務；再次，依照類似 THUIR@COLIEE 2023 的靜態 BM25 hard negative 設計，模型幾乎無法收斂。直到我們改用每個 epoch 依模型相似度動態抽樣的負樣本選取策略，並加入 year-based scope filtering、learning-to-rank 與 post-processing 後，整體系統才真正穩定。
-
-本研究的主要貢獻如下。第一，我們以 COLIEE 2026 重新驗證長文本假設，並說明 query 表示方式與截斷長度的交互作用。第二，我們證明靜態 BM25 hard negatives 會使法律判決 dense retrieval 幾乎無法訓練，而動態負樣本選取才是模型真正收斂的關鍵。第三，我們把 dense retrieval、scope filtering、LightGBM learning-to-rank 與 cut-off post-processing 整合成完整系統，最終在 COLIEE 2026 Task~1 的官方結果中取得第 7 名 \cite{coliee2026task1results}。
+本文有三個主要貢獻。第一，我們以 COLIEE 2026 重新檢驗長文本假設，並說明 query 表示方式與可見上下文長度的交互作用。第二，我們證明法律判決 dense retrieval 的關鍵不只在模型大小，而在於負樣本選取；靜態 BM25 hard negatives 幾乎無法訓練，而動態負樣本與 query-specific 年份範圍約束能讓模型穩定收斂。第三，我們把 dense retrieval、scope filtering、LightGBM learning-to-rank 與 cut-off post-processing 整合成完整系統，最終在 COLIEE 2026 Task~1 官方結果中取得第 7 名 \cite{coliee2026task1results}。

@@ -1,0 +1,194 @@
+\definecolor{FlowBlue}{HTML}{E6F0FA}
+\definecolor{FlowTeal}{HTML}{E7F5F1}
+\definecolor{FlowOrange}{HTML}{FFF3E0}
+\definecolor{FlowGray}{HTML}{F7F8FA}
+\definecolor{FlowBorder}{HTML}{4A5568}
+\definecolor{FlowAccent}{HTML}{1F4E79}
+\definecolor{FlowMuted}{HTML}{7A8797}
+
+\tikzset{
+  basebox/.style={
+    draw=FlowBorder,
+    line width=0.95pt,
+    rounded corners=3pt,
+    align=left,
+    text width=25.5mm,
+    inner xsep=5pt,
+    inner ysep=5pt,
+    minimum height=17mm,
+    font=\footnotesize,
+  },
+  databox/.style={basebox, fill=FlowBlue},
+  processbox/.style={basebox, fill=FlowTeal},
+  modelbox/.style={basebox, fill=FlowOrange},
+  infobox/.style={basebox, fill=FlowGray},
+  groupbox/.style={
+    draw=black!22,
+    rounded corners=5pt,
+    line width=0.75pt,
+    fill=black!2,
+    inner sep=7pt,
+  },
+  group label/.style={
+    font=\bfseries\small,
+    text=FlowAccent,
+    fill=white,
+    inner xsep=2pt,
+    inner ysep=1pt,
+  },
+  flow/.style={
+    -{Latex[length=2.8mm,width=1.9mm]},
+    line width=0.95pt,
+    draw=FlowBorder,
+  },
+  connector/.style={
+    line width=0.95pt,
+    draw=FlowBorder,
+  },
+  legendswatch/.style={
+    draw=FlowBorder,
+    line width=0.7pt,
+    rounded corners=1.5pt,
+    minimum width=6.5mm,
+    minimum height=3.8mm,
+    inner sep=0pt,
+  },
+  legendtext/.style={
+    anchor=west,
+    font=\fontsize{7.2}{8.2}\selectfont,
+    text=black,
+  },
+  hinttext/.style={
+    anchor=west,
+    font=\fontsize{6.8}{7.6}\selectfont,
+    text=FlowMuted,
+  },
+  junction/.style={
+    circle,
+    fill=FlowBorder,
+    draw=none,
+    inner sep=1.2pt,
+  },
+}
+
+\newcommand{\FlowNodeText}[2]{%
+  {\bfseries #1\par}%
+  \vspace{1pt}%
+  {\fontsize{7.1}{8.1}\selectfont #2}%
+}
+
+\newcommand{\ReuseHint}[1]{%
+  \par\vspace{1pt}%
+  {\fontsize{6.3}{7.0}\selectfont\color{FlowMuted}\ReusePrefix{}#1}%
+}
+
+\newcommand{\TaskOneSystemPipelineFigure}{%
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \def\groupGap{0.42}
+  \coordinate (sharedOrigin) at (0.0, 10.6);
+  \def\colgap{4.2}
+
+  \node[databox]   (s1) at (sharedOrigin) {\FlowNodeText{\RawDataTitle}{\RawDataSub}};
+  \node[processbox](s2) at ($(sharedOrigin)+(\colgap,0)$) {\FlowNodeText{\PreprocessTitle}{\PreprocessSub}};
+  \node[databox]   (s3) at ($(sharedOrigin)+(2*\colgap,0)$) {\FlowNodeText{\SplitAssetsTitle}{\SplitAssetsSub}};
+  \node[processbox](s4) at ($(sharedOrigin)+(3*\colgap,0)$) {\FlowNodeText{\IndexScopeTitle}{\IndexScopeSub}};
+
+  \coordinate (trainOrigin) at (0.0, 5.25);
+  \node[processbox](t2) at (trainOrigin) {\FlowNodeText{\HardNegTitle}{\HardNegSub}};
+  \node[processbox](t3) at ($(trainOrigin)+(\colgap,0)$) {\FlowNodeText{\DynamicNegTitle}{\DynamicNegSub}};
+  \node[modelbox]  (t4) at ($(trainOrigin)+(2*\colgap,0)$) {\FlowNodeText{\SFTTitle}{\SFTSub}};
+  \node[modelbox]  (t5) at ($(trainOrigin)+(3*\colgap,0)$) {\FlowNodeText{\LTRTrainTitle}{\LTRTrainSub}};
+  \node[modelbox]  (t1) at ($(t4)+(0,2.15)$) {\FlowNodeText{\BackboneTitle}{\BackboneSub}};
+
+  \coordinate (inferOrigin) at (0.0, 0.0);
+  \node[processbox](i1) at (inferOrigin) {\FlowNodeText{\InferenceInputTitle}{\InferenceInputSub}};
+  \node[processbox](i2) at ($(inferOrigin)+(\colgap,1.15)$) {\FlowNodeText{\LexicalTitle}{\LexicalSub}};
+  \node[modelbox]  (i3) at ($(inferOrigin)+(\colgap,-1.15)$) {\FlowNodeText{\DenseTitle}{\DenseSub}};
+  \node[processbox](i4) at ($(inferOrigin)+(2*\colgap,0)$) {\FlowNodeText{\FeatureMergeTitle}{\FeatureMergeSub}};
+  \node[infobox]   (i5) at ($(inferOrigin)+(3*\colgap,0)$) {\FlowNodeText{\PostTitle}{\PostSub}};
+
+  \draw[flow] (s1.east) -- (s2.west);
+  \draw[flow] (s2.east) -- (s3.west);
+  \draw[flow] (s3.east) -- (s4.west);
+
+  \draw[flow] (t2.east) -- (t3.west);
+  \draw[flow] (t3.east) -- (t4.west);
+  \draw[flow] (t1.south) -- (t4.north);
+  \draw[flow] ([xshift=8pt,yshift=-2pt]t4.south) -- ++(0,-0.62) -| ([xshift=8pt,yshift=-2pt]t3.south);
+  \draw[flow] (t4.east) -- (t5.west);
+  \node[anchor=north, font=\fontsize{6.8}{7.6}\selectfont, text=black] (epochloop)
+    at ($(t3.south)!0.5!(t4.south)+(0,-0.72)$) {\EpochLoopLabel};
+
+  \node[junction] (isplit) at ($(i1.east)+(0.72,0)$) {};
+  \node[junction] (imerge) at ($(i4.west)+(-0.85,0)$) {};
+  \draw[flow] (i1.east) -- (isplit);
+  \draw[flow] (isplit) |- (i2.west);
+  \draw[flow] (isplit) |- (i3.west);
+  \draw[connector] (i2.east) -| (imerge);
+  \draw[connector] (i3.east) -| (imerge);
+  \draw[flow] (imerge) -- (i4.west);
+  \draw[flow] (i4.east) -- (i5.west);
+
+  \begin{scope}[on background layer]
+    \coordinate (groupLeft) at ($(s1.north west)+(-0.50,0)$);
+    \coordinate (groupRight) at ($(s4.north east)+(0.28,0)$);
+    \coordinate (g1padnw) at ($(s1.north west)+(-0.50,0.60)$);
+    \coordinate (g1padse) at ($(s4.south east)+(0.28,-0.26)$);
+    \coordinate (g2padse) at ($(epochloop.south east)+(0.60,-0.20)$);
+    \coordinate (g3padse) at ($(i3.south east)+(0.35,-0.30)$);
+    \coordinate (g1nw) at ($(groupLeft |- g1padnw)$);
+    \coordinate (g1ne) at ($(groupRight |- g1padnw)$);
+    \coordinate (g1sw) at ($(groupLeft |- g1padse)$);
+    \coordinate (g1se) at ($(groupRight |- g1padse)$);
+    \node[groupbox, fit=(s1)(s4)(g1nw)(g1ne)(g1sw)(g1se)] (g1) {};
+
+    \coordinate (g2top) at ($(g1.south)+(0,-\groupGap)$);
+    \coordinate (g2nw) at ($(groupLeft |- g2top)$);
+    \coordinate (g2ne) at ($(groupRight |- g2top)$);
+    \coordinate (g2sw) at ($(groupLeft |- g2padse)$);
+    \coordinate (g2se) at ($(groupRight |- g2padse)$);
+    \node[groupbox, fit=(t1)(t2)(t3)(t4)(t5)(epochloop)(g2nw)(g2ne)(g2sw)(g2se)] (g2) {};
+
+    \coordinate (g3top) at ($(g2.south)+(0,-\groupGap)$);
+    \coordinate (g3nw) at ($(groupLeft |- g3top)$);
+    \coordinate (g3ne) at ($(groupRight |- g3top)$);
+    \coordinate (g3sw) at ($(groupLeft |- g3padse)$);
+    \coordinate (g3se) at ($(groupRight |- g3padse)$);
+    \node[groupbox, fit=(i1)(i2)(i3)(i4)(i5)(g3nw)(g3ne)(g3sw)(g3se)] (g3) {};
+  \end{scope}
+
+  \node[group label, anchor=north west] at ([xshift=3pt,yshift=-4pt]g1.north west) {\SharedLaneTitle};
+  \node[group label, anchor=north west] at ([xshift=3pt,yshift=-4pt]g2.north west) {\TrainingLaneTitle};
+  \node[group label, anchor=north west] at ([xshift=3pt,yshift=-4pt]g3.north west) {\InferenceLaneTitle};
+
+  \node[anchor=west, font=\bfseries\footnotesize, text=FlowAccent] (legtitle)
+    at ($(g3.south west)+(0.22,-0.78)$) {\LegendBoxTitle};
+
+  \node[legendswatch, fill=FlowBlue]   (legdata) at ($(legtitle.south west)+(0.88,-0.46)$) {};
+  \node[legendtext] (legdatalabel)  at ($(legdata.east)+(0.12,0)$) {\LegendDataLabel};
+
+  \node[legendswatch, fill=FlowTeal]   (legproc) at ($(legdata)+(2.55,0)$) {};
+  \node[legendtext] (legproclabel) at ($(legproc.east)+(0.12,0)$) {\LegendProcessLabel};
+
+  \node[legendswatch, fill=FlowOrange] (legmodel) at ($(legproc)+(2.55,0)$) {};
+  \node[legendtext] (legmodellabel) at ($(legmodel.east)+(0.12,0)$) {\LegendModelLabel};
+
+  \node[legendswatch, fill=FlowGray]   (legout) at ($(legmodel)+(2.45,0)$) {};
+  \node[legendtext] (legoutlabel) at ($(legout.east)+(0.12,0)$) {\LegendOutputLabel};
+
+  \coordinate (legflowstart) at ($(legoutlabel.east)+(0.46,0)$);
+  \draw[flow] (legflowstart) -- ++(0.95,0);
+  \node[legendtext] (legflowlabel) at ($(legflowstart)+(1.08,0)$) {\LegendMainFlowLabel};
+
+  \node[hinttext] (legreuselabel) at ($(legflowlabel.east)+(0.30,0)$) {\LegendReuseNote};
+
+  \begin{scope}[on background layer]
+    \coordinate (legboxtop) at ($(g3.south)+(0,-\groupGap)$);
+    \coordinate (legboxnw) at ($(groupLeft |- legboxtop)$);
+    \coordinate (legboxne) at ($(groupRight |- legboxtop)$);
+    \coordinate (legboxsw) at ($(groupLeft |- legflowlabel.south)+(0,-0.26)$);
+    \coordinate (legboxse) at ($(groupRight |- legflowlabel.south)+(0,-0.26)$);
+    \node[groupbox, fill=white, fit=(legtitle)(legdatalabel)(legproclabel)(legmodellabel)(legoutlabel)(legflowlabel)(legreuselabel)(legboxnw)(legboxne)(legboxsw)(legboxse)] (legbox) {};
+  \end{scope}
+\end{tikzpicture}%
+}
