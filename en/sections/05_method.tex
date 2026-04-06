@@ -56,6 +56,7 @@ Our most important methodological change is replacing static hard negatives with
 \quad n \in \mathcal{C}_i,
 \end{equation}
 where $s_e$ is the current epoch similarity score and $\alpha$ controls how peaked the distribution is. In our implementation, the sampling temperature is set to 1.0, which corresponds to $\alpha=1$.
+This keeps negative difficulty synchronized with the current model state rather than freezing it at a BM25-defined lexical notion of hardness.
 
 \subsection{Domain-Adaptive Pretraining}
 
