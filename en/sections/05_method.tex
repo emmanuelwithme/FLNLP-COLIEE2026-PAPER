@@ -1,6 +1,6 @@
 \section{Method}
 
-Our method is not designed from scratch. It develops through a practical cycle of reproduction, failure, revision, and integration. This section describes the final pipeline: baselines, long-context encoding, contrastive supervised fine-tuning, dynamic negative sampling, domain-adaptive pretraining, scope filtering, learning to rank, and post-processing. For brevity, we refer to continued pretraining on U.S. case law as DAP (domain-adaptive pretraining) and contrastive supervised fine-tuning on COLIEE Task~1 as SFT (supervised fine-tuning).
+This section describes the final pipeline: baselines, long-context encoding, contrastive supervised fine-tuning, dynamic negative sampling, domain-adaptive pretraining, scope filtering, learning to rank, and post-processing. We use the abbreviations DAPT, SFT, and LTR throughout.
 
 Figure~\ref{fig:task1-system-pipeline} summarizes the final Task~1 pipeline discussed in this section, separating train/valid preprocessing, model training, and test-time prediction.
 
@@ -8,13 +8,13 @@ Figure~\ref{fig:task1-system-pipeline} summarizes the final Task~1 pipeline disc
   \centering
   \includegraphics[width=\textwidth]{../shared/figures/task1_system_pipeline_en.pdf}
   \caption{Overview of the final Task~1 pipeline used in this paper. The diagram highlights the train/valid preprocessing assets, the training loop with dynamic negative sampling, and the test-time prediction path that combines lexical scoring, dense scoring, LightGBM reranking, and final post-processing.}
-  \Description{A flowchart of the final Task 1 system pipeline with three sections: train-valid setup, training only, and test-time prediction. It shows raw training cases being cleaned, split, and indexed; BM25 negatives and dynamic negative sampling feeding contrastive SFT and LightGBM reranker training; and test assets flowing through lexical scoring, dense scoring, LTR reranking, and final post-processing.}
+  \Description{A flowchart of the final Task 1 system pipeline with three sections: train-valid setup, training only, and test-time prediction. It shows raw training cases being cleaned, split, and indexed; contrastive training data and dynamic negative sampling feeding contrastive supervised fine-tuning and LightGBM reranker training; and test assets flowing through lexical scoring, dense scoring, learning-to-rank reranking, and final post-processing.}
   \label{fig:task1-system-pipeline}
 \end{figure*}
 
 \subsection{BM25 and SAILER Baselines}
 
-We keep BM25 and SAILER as the main baselines. BM25 represents a strong lexical retrieval baseline, while SAILER corresponds to the legal encoder architecture used by THUIR@COLIEE 2023 \cite{li2023thuir}. In our experiments, SAILER is not retrained. We directly use the released model for embedding and similarity scoring.\footnote{\url{https://huggingface.co/CSHaitao/SAILER_en_finetune}} This setting is relatively favorable to SAILER because the released fine-tuned model may already have seen data overlapping with, or at least very close to, our validation distribution.
+We keep BM25 and SAILER as the main baselines. BM25 represents a strong lexical retrieval baseline, while SAILER corresponds to the legal encoder architecture proposed by THUIR@COLIEE 2023 \cite{li2023thuir}. In our experiments, SAILER is not retrained. We directly use the released model for embedding and similarity scoring.\footnote{\url{https://huggingface.co/CSHaitao/SAILER_en_finetune}} This setting is relatively favorable to SAILER because the released fine-tuned model may already have seen data overlapping with, or at least very close to, our validation distribution.
 
 Our lexical features mainly come from BM25 and query likelihood with Dirichlet smoothing (QLD). For a query $q$ and document $d$, BM25 is
 \begin{equation}
@@ -29,9 +29,11 @@ where $c(t,q)$ and $c(t,d)$ are term counts and $p(t \mid C)$ is the collection 
 
 \subsection{Long-Context Encoding with ModernBERT}
 
-To test whether truncation is the key bottleneck, we use Answer.AI's ModernBERT-base encoder.\footnote{\url{https://huggingface.co/answerdotai/ModernBERT-base}} ModernBERT natively supports 8192 tokens and is therefore better suited than SAILER for long judgments in principle \cite{warner2024modernbert}. In practice, however, if one contrastive batch contains one query, one positive, and 15 negatives, then 17 long documents must be encoded in one update step. On a single RTX 4080 SUPER 16GB, this makes 8192-token training infeasible, so all formal experiments use 4096 tokens instead.
+\begin{sloppypar}
+To test whether truncation is the key bottleneck, we use Answer.AI's ModernBERT-base\footnote{\url{https://huggingface.co/answerdotai/ModernBERT-base}} encoder. ModernBERT natively supports 8192 tokens and is therefore better suited than SAILER for long judgments in principle \cite{warner2024modernbert}. In practice, however, if one contrastive batch contains one query, one positive, and 15 negatives, then 17 long documents must be encoded in one update step. On a single RTX 4080 SUPER 16GB, this makes 8192-token training infeasible, so all formal experiments use 4096 tokens instead.
+\end{sloppypar}
 
-For each judgment, we use the encoder's leading `[CLS]` vector as the dense retrieval representation, followed in the implementation by a projector and L2 normalization. We then report rankings under both dot product and cosine similarity.
+For each judgment, we use the encoder's leading `[CLS]` vector as the dense retrieval representation, followed in the implementation by a projector and L2 normalization. All dense rankings in this paper are then computed with cosine similarity.
 
 \subsection{Contrastive SFT and Static Hard Negatives}
 
@@ -60,7 +62,7 @@ This keeps negative difficulty synchronized with the current model state rather 
 
 \subsection{Domain-Adaptive Pretraining}
 
-Beyond task-specific SFT, we first continue pretraining ModernBERT on U.S. case law with masked language modeling. DAP uses the Common Pile CaseLaw Access Project subset so that the encoder can better adapt to legal sentences, citation patterns, and procedural language. Because of the current GPU budget, this stage runs for about 60 hours and still covers only 0.384 epoch, so we treat it as an under-saturated but useful adaptation step.
+Beyond task-specific SFT, we apply DAPT on the Common Pile CaseLaw Access Project subset so that the encoder better adapts to legal sentences, citation patterns, and procedural language. Because of the current GPU budget, this stage runs for about 60 hours and still covers only 0.384 epoch, so we treat it as an under-saturated but useful adaptation step.
 
 \subsection{Year-Based Scope Filtering}
 
@@ -68,9 +70,9 @@ We apply year-based scope filtering both during training data construction and d
 
 During training, scope filtering prevents future judgments from being mixed into the negative set. During inference, we build a query-specific \texttt{query\_candidate\_scope} index offline and reuse it during similarity computation and reranking, so each query scores only candidates inside its own scope rather than the full corpus. In the shared scope index used here, the implementation rule is \texttt{candidate\_year <= query\_year + 1}, with a conservative one-year slack to absorb year-extraction noise.
 
-\subsection{Learning to Rank}
+\subsection{Learning to Rank (LTR)}
 
-Following THUIR's learning-to-rank strategy in WSDM Cup 2023, web search ranking, and NTCIR-16 WWW-4 \cite{chen2023wsdmcup,li2023websearch,yang2023ntcir}, we integrate dense and lexical signals into a final ranking model. For each query--candidate pair we build 28 numeric features that can be grouped into seven families: lexical scores, dense scores, ranking positions, length statistics, placeholder statistics, year difference, and similarities computed from aggregated embeddings over one to three document chunks. \texttt{query\_id} and \texttt{candidate\_id} are retained only as identifiers and are not used as training features.
+Following THUIR's learning-to-rank strategy in WSDM Cup 2023, web search ranking, and NTCIR-16 WWW-4 \cite{chen2023wsdmcup,li2023websearch,yang2023ntcir}, we integrate dense and lexical signals into a final ranking model. For each query--candidate pair we build 28 numeric features that can be grouped into seven families: lexical scores, dense scores, ranking positions, length statistics, placeholder statistics, year difference, and similarities computed from aggregated embeddings over 1--3 document chunks. \texttt{query\_id} and \texttt{candidate\_id} are retained only as identifiers and are not used as training features.
 
 The ranking model is LightGBM's \texttt{LGBMRanker}, trained with the \texttt{lambdarank} objective and \texttt{ndcg} evaluation metric. Early stopping is performed on the validation set, and the best validation model is used at test time.
 

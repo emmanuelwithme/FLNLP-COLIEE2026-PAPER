@@ -46,13 +46,13 @@
 \newcommand{\IndexScopeSub}{輸出：train\_qid、BM25 query/index/ranking 和候選範圍。}
 
 \newcommand{\BackboneTitle}{ModernBERT\\backbone}
-\newcommand{\BackboneSub}{從 base encoder 或法律 DAP checkpoint 開始。}
+\newcommand{\BackboneSub}{從 base encoder 或法律 DAPT checkpoint 開始。}
 
-\newcommand{\HardNegTitle}{BM25 負樣本池}
-\newcommand{\HardNegSub}{先替每個 train-valid query 找 BM25 top-100 負樣本。\ReuseHint{BM25 排名}}
+\newcommand{\HardNegTitle}{準備對比式\\資料}
+\newcommand{\HardNegSub}{載入 train positives 與固定 validation set。}
 
-\newcommand{\DynamicNegTitle}{動態挑負樣本}
-\newcommand{\DynamicNegSub}{每個 epoch 依目前 dense 分數重抽 15 個 negatives。}
+\newcommand{\DynamicNegTitle}{動態抽 train\\negatives}
+\newcommand{\DynamicNegSub}{每個 epoch 依目前 dense 分數重抽 15 個 train negatives。}
 
 \newcommand{\SFTTitle}{對比式 SFT 與\\dense encoder}
 \newcommand{\SFTSub}{輸入：query、positive、15 negatives。\\輸出：已訓練 dense encoder。}

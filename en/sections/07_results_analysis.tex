@@ -1,44 +1,40 @@
 \section{Results and Analysis}
 
-\subsection{Query Representation Comparison}
+\subsection{Full-Document vs. Citation-Context Queries}
 
-Table~\ref{tab:query-ablation} compares two query representations on COLIEE 2026 validation: full-document queries (\texttt{processed}) and reference sentence extraction queries (\texttt{processed\_new}). Both models show the same conclusion: the full document is clearly better. For SAILER, F1@5 drops from 0.1213 to 0.1022; for ModernBERT DAP+SFT, it drops from 0.1650 to 0.1038. This indicates that a long-context encoder helps only when the query itself preserves enough legal context.
+Table~\ref{tab:query-ablation} compares two query views on COLIEE 2026 validation: full-document queries and citation-context queries. Both models show the same conclusion: the full document is clearly better. For SAILER, F1@5 drops from 0.1213 to 0.1022; for ModernBERT DAPT+SFT, it drops from 0.1650 to 0.1038. The same downward trend in SAILER matters because it shows that this is not unique to ModernBERT. At the same time, the ablation is conservative rather than perfectly length-matched: the citation-context view is much shorter on average, but it is not hard-capped at 512 words; 512 English word tokens only serves as the threshold for fallback expansion.
 
 \begin{table}[t]
   \centering
   \small
   \begin{tabular}{lcc}
     \toprule
-    Model & \texttt{processed} & \texttt{processed\_new} \\
+    Model & \shortstack{Full-document\\query} & \shortstack{Citation-context\\query} \\
     \midrule
-    SAILER-cos & 0.1213 & 0.1022 \\
-    ModernBERT fp16-cos & 0.1650 & 0.1038 \\
+    SAILER & 0.1213 & 0.1022 \\
+    ModernBERT fp16 & 0.1650 & 0.1038 \\
     \bottomrule
   \end{tabular}
-  \caption{COLIEE 2026 validation top-5 micro-F1. Candidate documents are fixed to \texttt{processed}; only the query representation changes.}
+  \caption{COLIEE 2026 validation top-5 micro-F1. Full-document query = full cleaned judgment; citation-context query = citation-context extraction with fallback expansion. Candidate documents are always fixed to the full-document view.}
   \label{tab:query-ablation}
 \end{table}
 
 \subsection{Main Model Comparison on COLIEE 2026 Validation and Training}
 
-Tables~\ref{tab:main-results-valid} and \ref{tab:main-results-train} summarize the main model comparisons on COLIEE 2026 validation and training. On validation, four conclusions are clear. First, untuned ModernBERT is almost unusable for legal retrieval: the origin model reaches only 0.0142 F1@5 under cosine similarity. Second, DAP alone does not replace task-specific supervision; in our 2025 exploration, DAP-only no-SFT runs still remain at only 0.0116 (cos) and 0.0013 (dot). Third, SFT already lets ModernBERT surpass both BM25 and SAILER, reaching 0.1573 F1@5. Fourth, adding DAP and scope-filtered training on top of SFT further improves validation F1@5 to 0.1650. On training queries, ModernBERT + SFT reaches 0.2262 F1@5, while ModernBERT + DAP + SFT rises to 0.3842, suggesting that DAP has already improved fitting capacity even though only 0.384 epoch of continued pretraining has been completed.
+Tables~\ref{tab:main-results-valid} and \ref{tab:main-results-train} summarize the main model comparisons on COLIEE 2026 validation and training under cosine similarity. On validation, three conclusions are clear. First, DAPT alone does not replace task-specific supervision; in our 2025 exploration, DAPT-only no-SFT reaches only 0.0116 F1@5. Second, SFT already lets ModernBERT surpass both BM25 and SAILER, reaching 0.1573 F1@5. Third, adding DAPT and scope-filtered training on top of SFT further improves validation F1@5 to 0.1650. On training queries, ModernBERT + SFT reaches 0.2262 F1@5, while ModernBERT + DAPT + SFT rises to 0.3842, suggesting that DAPT has already improved fitting capacity even though only 0.384 epoch of continued pretraining has been completed.
 
 \begin{table*}[t]
   \centering
   \scriptsize
-  \begin{tabular}{lccccccc}
+  \begin{tabular}{lcccccc}
     \toprule
-    Model & Similarity & DAP & SFT & SFT scopeFilter & F1@5 & Precision@5 & Recall@5 \\
+    Model & DAPT & SFT & SFT scopeFilter & F1@5 & Precision@5 & Recall@5 \\
     \midrule
-    BM25 & lexical & N & N & -- & 0.1499 & 0.1370 & 0.1655 \\
-    SAILER & cos & N & N & -- & 0.1213 & 0.1107 & 0.1341 \\
-    SAILER & dot & N & N & -- & 0.1114 & 0.1017 & 0.1232 \\
-    ModernBERT origin & cos & N & N & -- & 0.0142 & 0.0130 & 0.0157 \\
-    ModernBERT origin & dot & N & N & -- & 0.0022 & 0.0020 & 0.0024 \\
-    ModernBERT + SFT & cos & N & Y & N & 0.1573 & 0.1436 & 0.1739 \\
-    ModernBERT + SFT & dot & N & Y & N & 0.1573 & 0.1436 & 0.1739 \\
-    ModernBERT + DAP + SFT & cos & Y & Y & Y & 0.1650 & 0.1506 & 0.1824 \\
-    ModernBERT + DAP + SFT & dot & Y & Y & Y & 0.1650 & 0.1506 & 0.1824 \\
+    BM25 & N & N & -- & 0.1499 & 0.1370 & 0.1655 \\
+    SAILER & N & N & -- & 0.1213 & 0.1107 & 0.1341 \\
+    ModernBERT origin & N & N & -- & 0.0142 & 0.0130 & 0.0157 \\
+    ModernBERT + SFT & N & Y & N & 0.1573 & 0.1436 & 0.1739 \\
+    ModernBERT + DAPT + SFT & Y & Y & Y & 0.1650 & 0.1506 & 0.1824 \\
     \bottomrule
   \end{tabular}
   \caption{Main model comparison on COLIEE 2026 validation data.}
@@ -48,19 +44,15 @@ Tables~\ref{tab:main-results-valid} and \ref{tab:main-results-train} summarize t
 \begin{table*}[t]
   \centering
   \scriptsize
-  \begin{tabular}{lccccccc}
+  \begin{tabular}{lcccccc}
     \toprule
-    Model & Similarity & DAP & SFT & SFT scopeFilter & F1@5 & Precision@5 & Recall@5 \\
+    Model & DAPT & SFT & SFT scopeFilter & F1@5 & Precision@5 & Recall@5 \\
     \midrule
-    BM25 & lexical & N & N & -- & 0.1566 & 0.1429 & 0.1733 \\
-    SAILER & cos & N & N & -- & 0.1187 & 0.1083 & 0.1313 \\
-    SAILER & dot & N & N & -- & 0.1085 & 0.0990 & 0.1201 \\
-    ModernBERT origin & cos & N & N & -- & 0.0153 & 0.0140 & 0.0170 \\
-    ModernBERT origin & dot & N & N & -- & 0.0029 & 0.0026 & 0.0032 \\
-    ModernBERT + SFT & cos & N & Y & N & 0.2262 & 0.2064 & 0.2503 \\
-    ModernBERT + SFT & dot & N & Y & N & 0.2261 & 0.2063 & 0.2502 \\
-    ModernBERT + DAP + SFT & cos & Y & Y & Y & 0.3842 & 0.3505 & 0.4252 \\
-    ModernBERT + DAP + SFT & dot & Y & Y & Y & 0.3841 & 0.3504 & 0.4250 \\
+    BM25 & N & N & -- & 0.1566 & 0.1429 & 0.1733 \\
+    SAILER & N & N & -- & 0.1187 & 0.1083 & 0.1313 \\
+    ModernBERT origin & N & N & -- & 0.0153 & 0.0140 & 0.0170 \\
+    ModernBERT + SFT & N & Y & N & 0.2262 & 0.2064 & 0.2503 \\
+    ModernBERT + DAPT + SFT & Y & Y & Y & 0.3842 & 0.3505 & 0.4252 \\
     \bottomrule
   \end{tabular}
   \caption{Main model comparison on COLIEE 2026 training data.}
@@ -88,7 +80,7 @@ Scope filtering adds a second layer of stability. Its legal intuition is straigh
   \label{tab:scopefilter-effect}
 \end{table}
 
-A post-hoc audit further shows that the early train/validation shared scope was built from \texttt{processed} text rather than from raw judgments. This was not ideal, but the discrepancy is limited: for the 2,001 train/validation queries in COLIEE 2026, the global Jaccard overlap between processed-based and raw-based scope is 0.9447, the mean per-query Jaccard is 0.9291, and the processed-based scope still covers 97.86\% of the raw-based candidates on average. The legacy test scope is also highly similar to the raw test scope, and the final official submission switches back to raw-year scope.
+A post-hoc audit further shows that the early train/validation shared scope was built from cleaned full-document text rather than from raw judgments. This was not ideal, but the discrepancy is limited: for the 2,001 train/validation queries in COLIEE 2026, the global Jaccard overlap between full-document-text-based and raw-based scope is 0.9447, the mean per-query Jaccard is 0.9291, and the full-document-text-based scope still covers 97.86\% of the raw-based candidates on average. The legacy test scope is also highly similar to the raw test scope, and the final official submission switches back to raw-year scope.
 
 \begin{table}[t]
   \centering
@@ -97,7 +89,7 @@ A post-hoc audit further shows that the early train/validation shared scope was 
     \toprule
     Comparison & Queries & \shortstack{Global\\Jaccard} & \shortstack{Mean per-query\\Jaccard} \\
     \midrule
-    train/valid: processed vs raw & 2,001 & 0.9447 & 0.9291 \\
+    train/valid: full text vs raw & 2,001 & 0.9447 & 0.9291 \\
     test: legacy vs raw & 400 & 0.9526 & 0.9438 \\
     \bottomrule
   \end{tabular}
@@ -179,7 +171,7 @@ Table~\ref{tab:ltr-pipeline-progression} presents the overall ``dense retrieval 
     \toprule
     Model & F1 & Precision & Recall \\
     \midrule
-    ModernBERT + DAP + SFT (top5) & 0.164982 & 0.150623 & 0.182367 \\
+    ModernBERT + DAPT + SFT (top5) & 0.164982 & 0.150623 & 0.182367 \\
     + LightGBM rerank (top5) & 0.158933 & 0.142643 & 0.179423 \\
     + Filtering by trial year (top5) & 0.158933 & 0.142643 & 0.179423 \\
     + Self-doc removal (top5) & 0.159489 & 0.143142 & 0.180050 \\
@@ -250,4 +242,4 @@ According to the official Task~1 results page \cite{coliee2026task1results}, our
   \label{tab:official-ranking}
 \end{table*}
 
-Finally, comparing our results with Table~\ref{tab:thuir-table3-excerpt} makes the long-context argument clearer. In the THUIR excerpt, unlimited BM25 reaches F1 of 0.1541, while 512-token SAILER reaches 0.1385, so the lexical model is higher by 0.0156. On our held-out COLIEE 2026 validation split, by contrast, BM25 reaches F1 of 0.1499 and ModernBERT + DAP + SFT reaches 0.1650, exceeding BM25 by 0.0151; on the same split, SAILER reaches only 0.1213, which is 0.0286 below BM25. These numbers strongly support our main claim: for legal case retrieval, a long-context encoder that can read 4096 tokens is already clearly stronger than BERT-like models limited to 512 tokens. Even though our current hardware fully covers only 56.11\% of the judgments at 4096 tokens, the long-context model still surpasses an unlimited-length lexical baseline.
+Finally, comparing our results with Table~\ref{tab:thuir-table3-excerpt} makes the long-context argument clearer. In the THUIR excerpt, unlimited BM25 reaches F1 of 0.1541, while 512-token SAILER reaches 0.1385, so the lexical model is higher by 0.0156. On our held-out COLIEE 2026 validation split, by contrast, BM25 reaches F1 of 0.1499 and ModernBERT + DAPT + SFT reaches 0.1650, exceeding BM25 by 0.0151; on the same split, SAILER reaches only 0.1213, which is 0.0286 below BM25. These numbers strongly support our main claim: for legal case retrieval, a long-context encoder that can read 4096 tokens is already clearly stronger than BERT-like models limited to 512 tokens. Even though our current hardware fully covers only 56.11\% of the judgments at 4096 tokens, the long-context model still surpasses an unlimited-length lexical baseline.

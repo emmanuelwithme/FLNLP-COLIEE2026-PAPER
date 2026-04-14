@@ -15,11 +15,11 @@ R@k=
 \begin{equation}
 F1@k=\frac{2 \cdot P@k \cdot R@k}{P@k+R@k}.
 \end{equation}
-For each dense model we report both dot product and cosine similarity rankings. Dense retrieval checkpoints are selected by validation \texttt{eval\_global\_f1}; LTR models are selected by validation NDCG with early stopping.
+All dense models are evaluated with cosine similarity. Dense retrieval checkpoints are selected by validation \texttt{eval\_global\_f1}; LTR models are selected by validation NDCG with early stopping.
 
 \subsection{Models and Hyperparameters}
 
-Our best model uses ModernBERT-base as the backbone encoder, first performs DAP on U.S. case law, and then runs contrastive SFT on COLIEE Task~1. The main training settings are summarized in Table~\ref{tab:train-hparams}. Post-processing uses a broad validation-time grid search over fixed top-$k$, ratio cut-off, and largest-gap cut-off, and then applies the best strategy to the final submission.
+Our best model uses ModernBERT-base as the backbone encoder, first performs DAPT on U.S. case law, and then runs contrastive SFT on COLIEE Task~1. The main training settings are summarized in Table~\ref{tab:train-hparams}. Post-processing uses a broad validation-time grid search over fixed top-$k$, ratio cut-off, and largest-gap cut-off, and then applies the best strategy to the final submission.
 
 \begin{table*}[t]
   \centering
@@ -28,10 +28,10 @@ Our best model uses ModernBERT-base as the backbone encoder, first performs DAP 
     \toprule
     Module & Hyperparameter & Value \\
     \midrule
-    DAP & Corpus & U.S. case law corpus \\
-    DAP & Objective & Masked language modeling \\
-    DAP & Training time & About 60 hours (0.384 epoch) \\
-    DAP & Precision & bf16 \\
+    DAPT & Corpus & U.S. case law corpus \\
+    DAPT & Objective & Masked language modeling (MLM) \\
+    DAPT & Training time & About 60 hours (0.384 epoch) \\
+    DAPT & Precision & bf16 \\
     Dense / SFT & Backbone encoder & ModernBERT-base \\
     Dense / SFT & Max length & 4096 tokens \\
     Dense / SFT & Contrastive sample composition & 1 query + 1 noticed + 15 negatives \\
@@ -61,4 +61,4 @@ Our best model uses ModernBERT-base as the backbone encoder, first performs DAP 
 
 \subsection{Hardware}
 
-All major training and inference experiments are performed on a single NVIDIA RTX 4080 SUPER 16GB. This hardware budget directly shapes the method. Running 8192-token contrastive training with one query, one noticed case, and 15 negatives causes CUDA out-of-memory, so the final system uses 4096 tokens. Continued pretraining uses bf16, while dense retrieval fine-tuning and inference mainly use fp16 to improve memory usage. The DAP stage on U.S. case law also remains incomplete after roughly 60 hours, reaching only 0.384 epoch. Therefore, the final results should be understood as the best stable system under a single 16GB GPU, not as a hardware-unconstrained upper bound.
+All major training and inference experiments are performed on a single NVIDIA RTX 4080 SUPER 16GB. This hardware budget directly shapes the method. Running 8192-token contrastive training with one query, one noticed case, and 15 negatives causes CUDA out-of-memory, so the final system uses 4096 tokens. The DAPT stage uses bf16, while dense retrieval fine-tuning and inference mainly use fp16 to improve memory usage. The DAPT stage on U.S. case law also remains incomplete after roughly 60 hours, reaching only 0.384 epoch. Therefore, the final results should be understood as the best stable system under a single 16GB GPU, not as a hardware-unconstrained upper bound.

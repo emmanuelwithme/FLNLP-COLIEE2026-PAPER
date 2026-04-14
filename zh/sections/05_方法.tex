@@ -1,6 +1,6 @@
 \section{方法}
 
-本研究的方法並非從零開始，而是沿著「先重現，再修正，再整合」的流程逐步形成。本節依最終系統說明：基線模型、長文本 encoder、對比式 supervised fine-tuning、動態負樣本選取、法律領域繼續預訓練、scope filtering、learning-to-rank，以及 post-processing。為簡潔起見，本文將美國判決書上的 continued pretraining 稱為 DAP（domain-adaptive pretraining），將 COLIEE Task~1 上的對比式有監督微調稱為 SFT（supervised fine-tuning）。
+本節依最終系統說明：基線模型、長文本 encoder、對比式 supervised fine-tuning、動態負樣本選取、法律領域繼續預訓練、scope filtering、learning-to-rank，以及 post-processing。下文沿用 DAPT、SFT 與 LTR 三個縮寫。
 
 圖~\ref{fig:task1-system-pipeline} 先總覽本文最終採用的 Task~1 系統流程，區分訓練/驗證前處理、模型訓練，以及測試階段的預測與輸出。
 
@@ -8,13 +8,13 @@
   \centering
   \includegraphics[width=\textwidth]{../shared/figures/task1_system_pipeline_zh.pdf}
   \caption{本文最終使用的 Task~1 系統流程總覽。圖中整理了訓練/驗證前處理資產、包含動態負樣本選取的訓練迴圈，以及測試階段結合 lexical 打分、dense 打分、LightGBM 重排與最後 post-processing 的完整路徑。}
-  \Description{Task 1 系統流程圖，分成訓練驗證前處理、模型訓練與測試輸出三個區塊。流程包含原始訓練案例清理與切分、BM25 與年份範圍建立、BM25 負樣本池與動態負樣本驅動的對比式 SFT 和 LTR 訓練，以及測試資料經 lexical 打分、dense 打分、LTR 重排與最後後處理後輸出答案。}
+  \Description{Task 1 系統流程圖，分成訓練驗證前處理、模型訓練與測試輸出三個區塊。流程包含原始訓練案例清理與切分、BM25 與年份範圍建立、對比式訓練資料與動態負樣本驅動的對比式 supervised fine-tuning 和 learning-to-rank 訓練，以及測試資料經 lexical 打分、dense 打分、learning-to-rank 重排與最後後處理後輸出答案。}
   \label{fig:task1-system-pipeline}
 \end{figure*}
 
 \subsection{BM25 與 SAILER 基線}
 
-我們保留 BM25 與 SAILER 作為主要基線。BM25 代表 lexical retrieval 的強基線；SAILER 則對應 THUIR@COLIEE 2023 使用的 legal encoder \cite{li2023thuir}。在本文中，SAILER 不再重新 fine-tune，而是直接使用既有模型進行嵌入與相似度計算\footnote{\url{https://huggingface.co/CSHaitao/SAILER_en_finetune}}。這個設定其實對 SAILER 偏有利，因為其公開 fine-tuning 模型很可能已經看過與本文 valid split 重疊、或至少高度相近的資料分布。
+我們保留 BM25 與 SAILER 作為主要基線。BM25 代表 lexical retrieval 的強基線；SAILER 則對應 THUIR@COLIEE 2023 提出的 legal encoder \cite{li2023thuir}。在本文中，SAILER 不再重新 fine-tune，而是直接使用既有模型進行嵌入與相似度計算\footnote{\url{https://huggingface.co/CSHaitao/SAILER_en_finetune}}。這個設定其實對 SAILER 偏有利，因為其公開 fine-tuning 模型很可能已經看過與本文 valid split 重疊、或至少高度相近的資料分布。
 
 本文的 lexical features 主要來自 BM25 與 query likelihood model（QLD）。對 query $q$ 與文件 $d$，BM25 分數為
 \begin{equation}
@@ -31,7 +31,7 @@
 
 為檢驗長文本截斷是否為主要瓶頸，我們採用 Answer.AI 釋出的 ModernBERT-base \cite{warner2024modernbert}\footnote{\url{https://huggingface.co/answerdotai/ModernBERT-base}} 作為基礎 encoder。ModernBERT 原生支援 8192 tokens，理論上比 SAILER 更適合處理長篇判決書；但若在對比式訓練時同時輸入 1 篇 query、1 篇 positive 與 15 篇 negatives，等同於單一步驟要編碼 17 篇長文，在單張 RTX 4080 SUPER 16GB 上會直接發生記憶體不足。因此，本文正式實驗採用 4096 tokens。
 
-對於每篇判決書，我們使用 encoder 開頭的 `[CLS]` 向量表示作為 dense retrieval 嵌入，並在實作中再經 projector 與 L2 normalization；排名則同時比較 dot product 與 cosine similarity。
+對於每篇判決書，我們使用 encoder 開頭的 `[CLS]` 向量表示作為 dense retrieval 嵌入，並在實作中再經 projector 與 L2 normalization；本文所有 dense 排名皆以 cosine similarity 計算。
 
 \subsection{對比式 SFT 與靜態 Hard Negatives}
 
@@ -59,7 +59,7 @@
 
 \subsection{法律領域繼續預訓練}
 
-除了 task-specific SFT 之外，我們也先在美國判決書語料上對 ModernBERT 進行 DAP。具體而言，DAP 使用 Common Pile CaseLaw Access Project subset，並以 masked language modeling 訓練 backbone encoder。目的是讓 encoder 先適應法律文本中的長句、引文格式與程序語言。受限於目前 GPU 條件，continued pretraining 約訓練 60 小時，仍只覆蓋 0.384 epoch，因此本文將它視為「仍未訓練飽和」但有幫助的法律領域適應步驟。
+除了 task-specific SFT 之外，我們也先在美國判決書語料上對 ModernBERT 進行 DAPT。這個階段使用 Common Pile CaseLaw Access Project subset，讓 encoder 先適應法律文本中的長句、引文格式與程序語言。受限於目前 GPU 條件，這個 DAPT 階段約訓練 60 小時，仍只覆蓋 0.384 epoch，因此本文將它視為「仍未訓練飽和」但有幫助的法律領域適應步驟。
 
 \subsection{年份範圍約束與 scope filtering}
 
@@ -67,7 +67,7 @@
 
 在訓練時，scope filtering 能避免把未來判決混入負樣本；在推論時，我們先離線建立 query 專屬的候選範圍索引，使每個 query 只需對自身 scope 中的候選計分，而不必與全庫逐一比較，因此同時改善訓練訊號品質與計算效率。本文共用的 scope index 採用「candidate year 不晚於 query year + 1」的規則，以吸收年份抽取噪音。
 
-\subsection{Learning-to-Rank}
+\subsection{Learning-to-Rank (LTR)}
 
 延續 THUIR 在 WSDM Cup 2023、網頁搜尋排序與 NTCIR-16 WWW-4 任務上的融合思路 \cite{chen2023wsdmcup,li2023websearch,yang2023ntcir}，本文將 dense 與 lexical 訊號整合為最終排序分數。對每個 query--candidate pair，我們建立 28 個數值特徵，可概分為七類：lexical scores、dense scores、rank positions、長度統計、placeholder 統計、年份差，以及 1--3 個 chunks 聚合 embeddings 的相似度；\texttt{query\_id} 與 \texttt{candidate\_id} 僅作為識別欄，不會進入 ranker 訓練。
 

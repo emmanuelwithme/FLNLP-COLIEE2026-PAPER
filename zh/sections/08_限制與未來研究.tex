@@ -2,7 +2,7 @@
 
 本研究首先受限於硬體條件。雖然 ModernBERT 原生支援 8192 tokens，但在每個對比式樣本包含 1 篇 query case、1 篇 noticed case 與 15 篇負樣本的設定下，單張 RTX 4080 SUPER 16GB 無法穩定訓練 8192-token 版本，因此正式實驗採用 4096 tokens。這意味著本文仍未完全回答「真正的 8192-token 法律 dense retrieval」是否能帶來更大提升；但從文件長度分布推測，若能以 8192 tokens 訓練 ModernBERT，績效應仍有進一步上升空間，因為 COLIEE 2026 中可被完整覆蓋的判決書比例會由 56.11\% 提升到 87.69\%，等於多覆蓋 31.58 個百分點、也就是多 2,434 篇判決書。
 
-第二，法律領域 continued pretraining 目前僅訓練約 60 小時，仍只覆蓋 0.384 epoch，尚未完整看過全部 6,735,525 篇美國判決書，因此其潛力很可能尚未完全釋放。本文的 DAP 採用 bf16 訓練，但尚未系統性比較 fp16、bf16、fp32 或其他 mixed-precision 設定對 continued pretraining 與下游檢索表現的影響。
+第二，法律領域 continued pretraining 目前僅訓練約 60 小時，仍只覆蓋 0.384 epoch，尚未完整看過全部 6,735,525 篇美國判決書，因此其潛力很可能尚未完全釋放。本文的 DAPT 採用 bf16 訓練，但尚未系統性比較 fp16、bf16、fp32 或其他 mixed-precision 設定對 continued pretraining 與下游檢索表現的影響。
 
 第三，目前年份抽取仍完全依賴規則式方法：程式會從文本中擷取 1800 至 2026 的四位年份，取最大值作為判決年份，再以 \texttt{candidate\_year <= query\_year + 1} 建立 query-specific candidate scope。這個規則簡單有效，但仍可能受到歷史年份、程序日期或文本清理流程的影響。若主辦單位後續能提供更完整的 metadata，例如判決日期、法域、法院層級、法官與程序類型，candidate scope 與其他結構化特徵都能更精確利用。
 
