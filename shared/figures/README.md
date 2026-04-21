@@ -2,9 +2,9 @@
 
 This directory stores rendered figure assets used by the paper.
 
-- Rendered outputs: `paper/shared/figures/*.pdf`, `*.svg`, `*.png`
-- Diagram source files: `paper/shared/figures/diagram_src/`
-- Render command: `bash paper/render_figures.sh`
+- Rendered outputs: `paper_COLIEE/shared/figures/*.pdf`, `*.svg`, `*.png`
+- Diagram source files: `paper_COLIEE/shared/figures/diagram_src/`
+- Render command: `bash paper_COLIEE/render_figures.sh`
 
 For the Task 1 system overview diagram, the maintained source files are:
 
